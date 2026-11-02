@@ -1,6 +1,6 @@
 {
   "name": "@caojinyu111/vue-bim-viewer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "JavaScript BIM viewer SDK for Vue 3 and Three.js with TypeScript declarations",
   "type": "module",
   "license": "MIT",
