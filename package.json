@@ -1,0 +1,69 @@
+{
+  "name": "@caojinyu111/vue-bim-viewer",
+  "version": "0.3.0",
+  "description": "JavaScript BIM viewer SDK for Vue 3 and Three.js with TypeScript declarations",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "API.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./style.css": "./dist/style.css",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vite build && node scripts/copy-types.mjs",
+    "build:watch": "vite build --watch --emptyOutDir false",
+    "types:watch": "node --watch --watch-path=types scripts/copy-types.mjs",
+    "test:gis": "node --test test/*.test.mjs",
+    "typecheck": "node scripts/check-types.mjs",
+    "prepack": "npm run build && npm run test:gis",
+    "test": "npm run build && npm run test:gis",
+    "format": "prettier --write \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"test/**/*.mjs\" \"*.{json,js}\"",
+    "format:check": "prettier --check \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"test/**/*.mjs\" \"*.{json,js}\"",
+    "check": "npm run format:check && npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "three": "^0.186.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "@vitejs/plugin-vue": "6.0.10",
+    "three": "0.186.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vue": "3.5.43",
+    "vue-tsc": "3.3.13",
+    "prettier": "3.9.10"
+  },
+  "dependencies": {
+    "proj4": "2.22.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanjianyu/vue-bim-viewer"
+  },
+  "homepage": "https://github.com/chanjianyu/vue-bim-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/chanjianyu/vue-bim-viewer/issues"
+  }
+}
