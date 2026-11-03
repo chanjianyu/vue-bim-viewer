@@ -1,18 +1,7 @@
 import proj4 from 'proj4'
-import {
-  Box3,
-  DoubleSide,
-  Group,
-  Matrix4,
-  Mesh,
-  MeshBasicMaterial,
-  PlaneGeometry,
-  SRGBColorSpace,
-  Texture,
-  Vector3,
-} from 'three'
+import { Box3, Matrix4, PlaneGeometry, Vector3 } from 'three'
 
-/** 可选的有限矿区影像层。Key 与配准结果均由宿主提供，不加载地形或地图注记。 */
+/** 有限矿区地图的坐标适配；模型节点始终保留原始坐标。 */
 
 const radians = Math.PI / 180
 const maxLatitude = 85.0511287798066
@@ -33,23 +22,6 @@ export function tileGeographic(x, y, zoom) {
     longitude: (x / count) * 360 - 180,
     latitude: Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / count))) / radians,
   }
-}
-
-export function tileUrl(tile, key) {
-  const query = new URLSearchParams({
-    SERVICE: 'WMTS',
-    REQUEST: 'GetTile',
-    VERSION: '1.0.0',
-    LAYER: 'img',
-    STYLE: 'default',
-    TILEMATRIXSET: 'w',
-    FORMAT: 'tiles',
-    TILEMATRIX: String(tile.zoom),
-    TILEROW: String(tile.y),
-    TILECOL: String(tile.x),
-    tk: key,
-  })
-  return `https://t0.tianditu.gov.cn/img_w/wmts?${query}`
 }
 
 /**
@@ -109,12 +81,12 @@ export function createImageryPlan(rawBounds, placement, offset) {
     for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) tiles.push({ x, y, zoom })
     break
   }
-  const project = (longitude, latitude) => {
-    const point = new Vector3(...geographic.forward([longitude, latitude, 0])).applyMatrix4(
-      ecefToEnu,
-    )
-    // 本版为局部平面预览：丢弃椭球曲率和高程，统一铺在 ENU up=0 上。
-    point.z = 0
+  const project = (longitude, latitude, height = 0, absolute = false) => {
+    const point = new Vector3(
+      ...geographic.forward([longitude, latitude, absolute ? height : 0]),
+    ).applyMatrix4(ecefToEnu)
+    // 平面/相对预览保留原水平位置；真实高程模式保留 ECEF -> ENU 的完整结果。
+    if (!absolute) point.z = height
     return point.applyMatrix4(toRaw).add(offset)
   }
   const bounds = new Box3()
@@ -129,7 +101,13 @@ export function createImageryPlan(rawBounds, placement, offset) {
       bounds.expandByPoint(project(p.longitude, p.latitude))
     }
   }
-  return { tiles, project, bounds }
+  return {
+    tiles,
+    project,
+    bounds,
+    reference: placement.reference,
+    heightResolved: placement.heightResolved,
+  }
 }
 
 /** UV 的 v=1 对应图片北边；网格细分后逐顶点投影，避免整张影像仅作平移旋转。 */
@@ -143,109 +121,7 @@ export function createTileGeometry(tile, project) {
     positions.setXYZ(i, point.x, point.y, point.z)
   }
   geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
   return geometry
-}
-
-/** 每个实例拥有自己的请求、纹理与分组；关闭后迟到的解码结果也必须释放。 */
-export function createImageryLayer(plan, key, opacity, onStatus, invalidate) {
-  const root = new Group()
-  root.name = 'GIS imagery'
-  const pending = new AbortController()
-  let disposed = false,
-    cursor = 0,
-    loaded = 0,
-    failed = 0,
-    lastError = ''
-  const meshes = []
-  const emit = (status) => {
-    if (!disposed)
-      onStatus({
-        status,
-        loaded,
-        failed,
-        total: plan.tiles.length,
-        ...(failed ? { message: lastError } : {}),
-      })
-  }
-  async function worker() {
-    while (!disposed && cursor < plan.tiles.length) {
-      const tile = plan.tiles[cursor++]
-      let bitmap
-      try {
-        const response = await fetch(tileUrl(tile, key), { signal: pending.signal })
-        if (!response.ok)
-          throw new Error(`影像请求失败（HTTP ${response.status}），请检查 Key、权限或网络`)
-        if (!response.headers.get('content-type')?.startsWith('image/'))
-          throw new Error('影像服务未返回图片，请检查天地图 Key 与服务权限')
-        // ImageBitmap 不响应 Texture.flipY，必须在解码阶段翻转到 WebGL UV 方向。
-        bitmap = await createImageBitmap(await response.blob(), { imageOrientation: 'flipY' })
-        if (disposed) {
-          bitmap.close()
-          return
-        }
-        const texture = new Texture(bitmap)
-        texture.flipY = false
-        texture.colorSpace = SRGBColorSpace
-        texture.needsUpdate = true
-        const mesh = new Mesh(
-          createTileGeometry(tile, plan.project),
-          new MeshBasicMaterial({
-            map: texture,
-            transparent: true,
-            opacity,
-            side: DoubleSide,
-            depthWrite: false,
-            toneMapped: false,
-          }),
-        )
-        root.add(mesh)
-        meshes.push(mesh)
-        bitmap = undefined // 所有权交给材质，dispose 时连同 GPU 纹理一起释放。
-        loaded++
-        invalidate()
-      } catch (cause) {
-        bitmap?.close()
-        if (disposed) return
-        failed++
-        // 不透传包含请求 URL 的异常，避免把 Key 写入宿主状态或日志。
-        lastError =
-          cause instanceof Error && !cause.message.includes('://')
-            ? cause.message
-            : '影像加载失败，请检查网络、跨域或服务权限'
-      }
-      emit('loading')
-    }
-  }
-  emit('loading')
-  void Promise.all(Array.from({ length: Math.min(6, plan.tiles.length) }, () => worker())).then(
-    () => {
-      emit(failed ? (loaded ? 'partial' : 'error') : 'ready')
-    },
-  )
-  return {
-    root,
-    bounds: plan.bounds,
-    setOpacity(value) {
-      opacity = value
-      meshes.forEach((mesh) => {
-        mesh.material.opacity = opacity
-      })
-      invalidate()
-    },
-    dispose() {
-      if (disposed) return
-      disposed = true
-      pending.abort()
-      root.removeFromParent()
-      for (const mesh of meshes) {
-        mesh.geometry.dispose()
-        mesh.material.map?.dispose()
-        mesh.material.map?.image?.close()
-        mesh.material.dispose()
-      }
-      meshes.length = 0
-      root.clear()
-    },
-  }
 }

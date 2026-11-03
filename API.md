@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.3.0**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.3.2**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -16,7 +16,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 6. [外观修改、差异与保存](#appearance)
 7. [Marker 标签与弹窗](#markers)
 8. [事件与插槽参考](#events-slots)
-9. [GIS 三点与多点配准](#gis)
+9. [GIS 配准、影像与 DEM](#gis)
 10. [公开类型索引](#types)
 11. [模块入口与类型声明](#development)
 12. [常见问题与限制](#troubleshooting)
@@ -31,6 +31,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | ---------- | --------------------------------------------------------------- | --------------------------------------- |
 | 模型加载   | 通过 Manifest 加载 GLB/glTF，处理外部 buffer/image 和可选元数据 | `MineViewer`、`modelSource`             |
 | 三维浏览   | 拖动旋转、滚轮缩放、右键平移、容器尺寸适配、初始全模型视角      | `initialView`、`resetView()`            |
+| 视角导航   | Home、26 方向骰子、六个标准方向方法及实时显隐                   | `navigation`、`setViewDirection()`      |
 | 构件树     | 完整父子结构、空节点、元数据、包围盒和资源版本                  | `getComponentTree()`                    |
 | 场景查询   | 源场景结构快照、活的 Three.js 根节点、对象对应 ID               | `getSceneTree()` 等                     |
 | 构件交互   | 三维拾取、按 ID 选择、选择轮廓、相机定位、清除选择              | `selectComponent()`、`focusComponent()` |
@@ -40,6 +41,8 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 标签       | 原始模型坐标点、构件锚点、模型偏移、屏幕偏移                    | `markers`                               |
 | 弹窗与模板 | 默认标签/弹窗、自定义插槽、点击切换和关闭                       | `marker`、`marker-popup`                |
 | GIS 配准   | 三点或多点水平配准、可选高程、ENU/ECEF 矩阵、误差报告           | `createGisPlacement()`                  |
+| 地图影像   | 有限范围天地图影像、透明度、独立加载状态                        | `gis`、`gis-status`                     |
+| DEM 地形   | 相对预览、真实高程转换、缺测回退及独立准备状态                  | `gis.terrain`、`terrain-status`         |
 | 场景背景   | 纯色或普通静态图片，居中 cover，可响应式更新                    | `background`、`background-error`        |
 | 树展开工具 | 按源顺序深度优先展开构件树                                      | `flattenComponentTree()`                |
 
@@ -47,7 +50,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 
 SDK 管理模型加载、渲染、构件索引、外观运行状态、选择、标签投影和资源清理。宿主通过参数、事件及公开方法接入业务。
 
-以下由宿主负责：模型 URL 与访问权限、构件树界面和搜索、业务按钮、标签内容、localStorage/服务端保存、JSON 文件选择与下载、地图服务密钥及控制点。SDK 可选影像层通过 gis 属性接入；构件树与外观操作面板由应用自行实现，SDK 不依赖业务 UI 组件库。
+以下由宿主负责：模型 URL 与访问权限、构件树界面和搜索、业务按钮、标签内容、localStorage/服务端保存、JSON 文件选择与下载、地图服务密钥、控制点及真实高程基准转换。SDK 通过 `gis` 属性接入可选影像与 DEM；构件树与外观操作面板由应用自行实现，SDK 不依赖业务 UI 组件库。
 
 当前包的运行时命名导出只有：
 
@@ -64,18 +67,18 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 
 ### 2.1 安装依赖
 
-在 Vue 应用中安装 SDK 与 peerDependencies：
+在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.0 vue@^3.5.0 three@^0.186.0
+npm install @caojinyu111/vue-bim-viewer@0.3.2
 ```
 
-运行环境要求 Vue 3.5+（3.x）、Three.js 0.186.x 和支持 WebGL2 的浏览器。Vue 与 Three.js 由应用共用实例；GIS 使用的 Proj4js 随 SDK 安装。
+运行环境要求 Vue **3.5.43**、Three.js **0.183.1** 和支持 WebGL2 的浏览器。Vue 与 Three.js 为精确版本的共享 peerDependencies，npm 7+ 会补齐尚未安装的 peer；已有不兼容版本的宿主先执行 `npm install vue@3.5.43 three@0.183.1`。three-tile **0.12.2** 与 Proj4js 随 SDK 安装，three-tile 随 SDK 构建。地图请求还需要 `fetch`、`createImageBitmap`、`AbortSignal.any/timeout`；DEM 解压需要 `DecompressionStream`。
 
 TypeScript 应用额外安装 Three.js 类型声明：
 
 ```sh
-npm install --save-dev @types/three@0.186.0
+npm install --save-dev @types/three@0.183.1
 ```
 
 公开声明引用 Three.js 类型。`@types/three` 是 SDK 的开发依赖，不会随运行依赖传递，消费项目需自行安装。JavaScript 项目需要完整 JSDoc 提示时也可安装。
@@ -313,16 +316,17 @@ async function refreshModel() {
 
 ## 4. 组件参数
 
-| Prop               | 类型                      | 默认值                 | 生效方式                                       |
-| ------------------ | ------------------------- | ---------------------- | ---------------------------------------------- |
-| `modelSource`      | `ModelSource`             | 必填                   | 监听 `manifestUrl` 字符串变化，自动加载/重载   |
-| `markers`          | `Marker[]`                | `[]`                   | 深度监听响应式标签数据，更新标签投影和显示     |
-| `initialView`      | `InitialView`             | `{}`                   | 成功展示模型时交给渲染器，用于全模型适配与重置 |
-| `cameraTransition` | `CameraTransitionOptions` | `{ duration: 800 }`    | 定位和重置时读取，设置默认过渡时长             |
-| `gis`              | `GisOptions`              | 不加载影像             | 可选天地图平面影像配置，见 9.9                 |
-| `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }` | 深度监听，实时更新背景，不重载模型             |
+| Prop               | 类型                      | 默认值                       | 生效方式                                       |
+| ------------------ | ------------------------- | ---------------------------- | ---------------------------------------------- |
+| `modelSource`      | `ModelSource`             | 必填                         | 监听 `manifestUrl` 字符串变化，自动加载/重载   |
+| `markers`          | `Marker[]`                | `[]`                         | 深度监听响应式标签数据，更新标签投影和显示     |
+| `initialView`      | `InitialView`             | `{}`                         | 成功展示模型时交给渲染器，用于全模型适配与重置 |
+| `cameraTransition` | `CameraTransitionOptions` | `{ duration: 800 }`          | 定位和重置时读取，设置默认过渡时长             |
+| `gis`              | `GisOptions`              | 不加载地图                   | 可选天地图影像及 DEM，见 9.9、9.11             |
+| `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }`       | 深度监听，实时更新背景，不重载模型             |
+| `navigation`       | `NavigationOptions`       | `{ home: true, cube: true }` | Home 与 26 方向骰子分别实时显隐，不重载模型    |
 
-Vue 模板中分别使用 `:model-source`、`:markers`、`:initial-view`、`:camera-transition`、`:gis` 和 `:background`。
+Vue 模板中分别使用 `:model-source`、`:markers`、`:initial-view`、`:camera-transition`、`:gis`、`:background` 和 `:navigation`。
 
 `InitialView` 的字段：
 
@@ -333,7 +337,47 @@ Vue 模板中分别使用 `:model-source`、`:markers`、`:initial-view`、`:cam
 
 非法或零方向使用默认方向；无效留白倍率使用默认值。`initialView` 没有独立的实时相机更新监听，不应当作相机控制 API；替换该配置后，可通过 `reload()` 在下一次成功展示时重新应用。`focusComponent()` 保持当前观察方向，`resetView()` 按当前渲染器持有的初始配置适配整个模型。
 
-### 4.1 背景颜色与背景图片
+<a id="navigation"></a>
+
+### 4.1 Home 与 26 方向导航骰子
+
+`NavigationOptions` 仅包含 `home?: boolean` 和 `cube?: boolean`，未提供的字段均为 `true`。可以替换整个配置，也可修改响应式对象的字段；界面立即生效，不重载模型、不改变当前相机。
+
+| 配置                           | 导航显示                           |
+| ------------------------------ | ---------------------------------- |
+| 不传、`{}`                     | Home 与骰子均显示                  |
+| `{ home: false }`              | 仅骰子                             |
+| `{ cube: false }`              | 仅 Home，收缩为 44px 按钮          |
+| `{ home: false, cube: false }` | 全部隐藏，不占位；实例方法仍可使用 |
+
+```vue
+<script setup>
+import { reactive, shallowRef } from 'vue'
+import { MineViewer } from '@caojinyu111/vue-bim-viewer'
+import '@caojinyu111/vue-bim-viewer/style.css'
+const viewer = shallowRef(null)
+const source = { manifestUrl: '/models/manifest.json' }
+const navigation = reactive({ home: true, cube: true })
+</script>
+
+<template>
+  <label><input v-model="navigation.home" type="checkbox" />Home</label>
+  <label><input v-model="navigation.cube" type="checkbox" />方向骰子</label>
+  <div style="height: 600px">
+    <MineViewer ref="viewer" :model-source="source" :navigation="navigation" />
+  </div>
+</template>
+```
+
+导航位于右上角，距顶、右各 16px；骰子区域为 150×150px，Home 图标约 24px、命中区域 44px。切角骰子和房屋图标使用本地 SVG 和 Three.js 数学计算绘制，不请求远程素材。GIS 署名自动排列在导航下方，标记弹窗避开导航区域。
+
+Home 等同于 `resetView()`：按 `initialView` 恢复方向，并重新适配整个模型，不清除选择、外观修改或标记。骰子随主相机旋转，六个面、十二条边、八个角均可点击；方向切换保留当前观察目标与距离，因此构件定位后仍围绕该构件观察。
+
+世界坐标固定为上 `+Y`、下 `-Y`、右 `+X`、左 `-X`、前 `+Z`、后 `-Z`；边角方向是相应轴向量之和再归一化，不自动识别建筑正门。上下视角保留极小偏角，避免 OrbitControls 在极点退化。连续点击会从当前动画姿态转向新方向，主视窗拖动中断动画；时长沿用 `cameraTransition`，默认 800ms，减少动态效果设置下立即切换。
+
+首次就绪前及图形上下文丢失后禁用导航；旧模型保留时重载期间仍可导航，失败后继续操作旧模型。控件支持 Tab、Enter、Space，点击不触发模型拾取。隐藏骰子时停止投影更新，再次显示立即同步当前朝向。此功能不包含骰子拖动、下拉菜单或实体 Home 键快捷操作；内部组件不从包入口导出。
+
+### 4.2 背景颜色与背景图片
 
 `BackgroundOptions` 为公开类型，可用 `import type { BackgroundOptions } from '@caojinyu111/vue-bim-viewer'` 引入：
 
@@ -421,25 +465,28 @@ function onBackgroundError(error) {
 
 通过 `<MineViewer ref="viewer" />` 获取实例，再调用 `viewer.value` 上的方法。表中“未就绪”指尚无成功加载的模型；重载期间已有旧模型时，查询仍可返回旧模型的数据。
 
-| 方法                                | 输入与默认值                       | 返回值                        | 未就绪、未知 ID 或其他边界                                       |
-| ----------------------------------- | ---------------------------------- | ----------------------------- | ---------------------------------------------------------------- |
-| `getComponentTree()`                | 无                                 | `ComponentTree \| null`       | 未就绪为 `null`；返回完整独立快照                                |
-| `getSceneTree()`                    | 无                                 | `ComponentTree \| null`       | 未就绪为 `null`；结构同源，去掉业务元数据，仅保留源节点索引关联  |
-| `getSceneRoot()`                    | 无                                 | `Object3D \| null`            | 未就绪为 `null`；返回 Loader 原始场景根，活对象、只读使用        |
-| `getComponentId(node)`              | 当前场景的 `Object3D` 引用         | `string \| null`              | 未就绪或对象不属于当前场景为 `null`                              |
-| `getComponent(id)`                  | 构件 ID 字符串                     | `ComponentNode \| null`       | 未知 ID/未就绪为 `null`；含该节点的后代快照                      |
-| `getComponentAnchor(id, anchor?)`   | ID；`anchor` 默认 `'origin'`       | `Point3 \| null`              | 未知 ID/未就绪为 `null`；没有包围盒时只能查询原点                |
-| `getComponentAppearance(id)`        | ID                                 | `AppearanceState \| null`     | 未知 ID/未就绪为 `null`                                          |
-| `setComponentAppearance(id, patch)` | ID 和外观字段                      | `OperationResult`             | 未就绪返回 `error`；未知 ID/非法 patch 分别报告                  |
-| `setComponentAppearances(updates)`  | `{ id, patch }[]`                  | `OperationResult`             | 有效项应用，非法项跳过；不是整批回滚                             |
-| `getAppearanceChanges()`            | 无                                 | `AppearanceChangeSet \| null` | 未就绪为 `null`；就绪但无修改时 `overrides: []`                  |
-| `applyAppearanceChanges(value)`     | 已解析的差异对象，不是 JSON 字符串 | `OperationResult`             | 格式、版本、字段校验失败时不应用；未知 ID 单独报告               |
-| `restoreComponent(id)`              | ID                                 | `OperationResult`             | 只取消该节点自身覆盖，保留后代独立覆盖和祖先影响                 |
-| `restoreAllComponents()`            | 无                                 | `OperationResult`             | 删除所有自身覆盖；未就绪返回 `error`                             |
-| `selectComponent(id)`               | ID 或 `null`                       | `boolean`                     | 有效选择/清空成功为 `true`；未知 ID/未就绪为 `false`             |
-| `focusComponent(id, options?)`      | ID；可选 `{ duration }`，毫秒      | `boolean`                     | 接受定位为 `true`；未知 ID/未就绪/非法时长为 `false`；不自动选择 |
-| `resetView(options?)`               | 可选 `{ duration }`，毫秒          | `boolean`                     | 有模型时重置全模型视角；无模型/非法时长为 `false`                |
-| `reload()`                          | 无                                 | `Promise<void>`               | 取消前一轮加载；失败保留旧场景，通过事件报告结果                 |
+| 方法                                    | 输入与默认值                            | 返回值                        | 未就绪、未知 ID 或其他边界                                             |
+| --------------------------------------- | --------------------------------------- | ----------------------------- | ---------------------------------------------------------------------- |
+| `getComponentTree()`                    | 无                                      | `ComponentTree \| null`       | 未就绪为 `null`；返回完整独立快照                                      |
+| `getSceneTree()`                        | 无                                      | `ComponentTree \| null`       | 未就绪为 `null`；结构同源，去掉业务元数据，仅保留源节点索引关联        |
+| `getSceneRoot()`                        | 无                                      | `Object3D \| null`            | 未就绪为 `null`；返回 Loader 原始场景根，活对象、只读使用              |
+| `getComponentId(node)`                  | 当前场景的 `Object3D` 引用              | `string \| null`              | 未就绪或对象不属于当前场景为 `null`                                    |
+| `getComponent(id)`                      | 构件 ID 字符串                          | `ComponentNode \| null`       | 未知 ID/未就绪为 `null`；含该节点的后代快照                            |
+| `getComponentAnchor(id, anchor?)`       | ID；`anchor` 默认 `'origin'`            | `Point3 \| null`              | 未知 ID/未就绪为 `null`；没有包围盒时只能查询原点                      |
+| `getComponentAppearance(id)`            | ID                                      | `AppearanceState \| null`     | 未知 ID/未就绪为 `null`                                                |
+| `setComponentAppearance(id, patch)`     | ID 和外观字段                           | `OperationResult`             | 未就绪返回 `error`；未知 ID/非法 patch 分别报告                        |
+| `setComponentAppearances(updates)`      | `{ id, patch }[]`                       | `OperationResult`             | 有效项应用，非法项跳过；不是整批回滚                                   |
+| `getAppearanceChanges()`                | 无                                      | `AppearanceChangeSet \| null` | 未就绪为 `null`；就绪但无修改时 `overrides: []`                        |
+| `applyAppearanceChanges(value)`         | 已解析的差异对象，不是 JSON 字符串      | `OperationResult`             | 格式、版本、字段校验失败时不应用；未知 ID 单独报告                     |
+| `restoreComponent(id)`                  | ID                                      | `OperationResult`             | 只取消该节点自身覆盖，保留后代独立覆盖和祖先影响                       |
+| `restoreAllComponents()`                | 无                                      | `OperationResult`             | 删除所有自身覆盖；未就绪返回 `error`                                   |
+| `selectComponent(id)`                   | ID 或 `null`                            | `boolean`                     | 有效选择/清空成功为 `true`；未知 ID/未就绪为 `false`                   |
+| `focusComponent(id, options?)`          | ID；可选 `{ duration }`，毫秒           | `boolean`                     | 接受定位为 `true`；未知 ID/未就绪/非法时长为 `false`；不自动选择       |
+| `resetView(options?)`                   | 可选 `{ duration }`，毫秒               | `boolean`                     | 有模型时重置全模型视角；无模型/非法时长为 `false`                      |
+| `setViewDirection(direction, options?)` | 六个标准方向；可选 `{ duration }`，毫秒 | `boolean`                     | 保留观察目标与距离；未就绪、非法方向或时长返回 `false`，不打断有效动画 |
+| `reload()`                              | 无                                      | `Promise<void>`               | 取消前一轮加载；失败保留旧场景，通过事件报告结果                       |
+
+`ViewDirection` 为 `'top' | 'bottom' | 'left' | 'right' | 'front' | 'back'`。例如 `viewer.value.setViewDirection('front', { duration: 0 })` 立即切到前视角。其余 20 个边角方向仅由内置骰子触发，不属于公开参数。
 
 ### 5.2 构件树、节点和版本
 
@@ -843,6 +890,7 @@ function onMarkerClick(marker) {
 | `appearance-change`    | `AppearanceEvent`       | 外观自身覆盖发生变化；包含 source、before、after 和 result       |
 | `marker-click`         | `Marker`                | 标签被点击，包括再次点击同一标签关闭弹窗时                       |
 | `gis-status`           | `GisStatus`             | 影像加载、部分失败、就绪、关闭或错误状态变化                     |
+| `terrain-status`       | `TerrainStatus`         | DEM 准备、部分失败、就绪、关闭或错误；与影像计数独立             |
 | `background-error`     | `{ message: string }`   | 背景颜色/图片配置无效或当前图片加载失败；与模型错误独立          |
 
 `AppearanceEvent.source` 为 `'api'`、`'restore'` 或 `'import'`；`before/after` 为 `AppearanceChangeSet` 快照，`result` 为本次 `OperationResult`。事件用于宿主同步界面和保存，不需要自行重新维护一套覆盖状态。
@@ -869,7 +917,7 @@ function onAppearanceChange(event) {
 
 <a id="gis"></a>
 
-## 9. GIS 三点与多点配准
+## 9. GIS 配准、影像与 DEM
 
 ### 9.1 用途与基本流程
 
@@ -877,7 +925,7 @@ function onAppearanceChange(event) {
 
 推荐流程：确认现实坐标系和模型单位/竖直轴，选取分散的对应点，调用方法，检查逐点误差，再用未参与拟合的独立点复核，最后由宿主将结果接到 GIS 模型图层。
 
-此函数不自动倾斜、拉伸模型，不自动识别坐标系，也不会直接修改 Viewer 场景。可通过独立的 gis 组件属性接入 SDK 平面影像层，见 9.9；不加载地形。
+此函数只计算配准结果，不自动倾斜、拉伸模型，不自动识别坐标系，也不会直接修改 Viewer 场景。将结果传给 `gis` 组件属性可显示天地图影像，见 9.9；可选 DEM 地形见 9.11。
 
 ### 9.2 全部输入选项
 
@@ -1073,7 +1121,7 @@ const gis = {
 
 应在构件树就绪后从当前模型取得控制点，并同步重建 `gis` 配置。上述 `fallbackHeight` 将第一个模型点对齐 ENU up=0，仅用于无高程时的平面预览。省略 `map.height` 时，`heightResolved` 保持 `false`。对象原点或包围盒中心不能代替现场确认的测量点。
 
-`gis` 接收 `GisOptions`：`enabled?` 默认 false，`placement` 为配准结果，`imagery.key` 由宿主传入，`opacity?` 默认 0.65，范围 0–1。影像来自 HTTPS 天地图 img_w，不含注记或地形。范围为模型水平范围外扩 1000 米后覆盖到瓦片边界，优先 16 级，最多 256 张、6 并发；没有无限地图漫游。瓦片逐顶点转换到局部 ENU，压平 up=0，再通过配准逆矩阵及展示偏移显示，不进入构件树、拾取和外观差异。
+`gis` 接收 `GisOptions`：`enabled?` 默认 false，`placement` 为配准结果，`imagery.key` 由宿主传入，`opacity?` 默认 0.65，范围 0–1。影像通过 three-tile 的 TDTSource 加载 HTTPS 天地图 img_w，不含注记。范围为模型水平范围外扩 1000 米后覆盖到瓦片边界，优先 16 级，最多 256 张；没有相机动态 LOD 或无限地图漫游。DEM 默认关闭，此时逐顶点转换到局部 ENU，压平 up=0，再通过配准逆矩阵及展示偏移显示。可选 DEM 见 9.11；地图不进入构件树、拾取和外观差异。
 
 `gis-status` 为 `GisStatus`，含 `status`、`loaded`、`failed`、`total`、可选 `message`。status 为 `disabled/loading/ready/partial/error`。部分失败保留成功瓦片，全失败也不影响模型；无自动重试，可关闭再打开。透明度变化不重请求；关闭、替换配准/Key、模型成功切换和销毁会取消旧请求并释放纹理、ImageBitmap、材质和网格。相机聚焦仍以模型/构件为目标，远裁剪面兼顾地图。Key 在浏览器请求中可见，勿当作浏览器端秘密。
 
@@ -1154,6 +1202,52 @@ function onGisStatus(status) {
 
 模型切换成功后会再次调用 `onReady`，使用新模型重建配准；配准失败时该例清空影像配置，模型仍可浏览。失败重载没有树就绪事件，保留旧模型及其原配准。示例锚点为中心，不等于真实测量点，实际控制点应使用现场确认的原始模型坐标。
 
+<a id="gis-terrain"></a>
+
+### 9.11 可选 DEM 地形
+
+`gis.terrain` 配置 DEM，默认关闭。相对预览配置如下，示例中的 `placement` 和 `tiandituKey` 由宿主提供：
+
+```js
+const gis = {
+  enabled: true,
+  placement,
+  imagery: { key: tiandituKey },
+  opacity: 0.65,
+  terrain: { enabled: true, mode: 'relative' },
+}
+// <MineViewer :gis="gis" @gis-status="onImagery" @terrain-status="onTerrain" ... />
+```
+
+| 字段                | 类型                                                | 默认值及要求                                |
+| ------------------- | --------------------------------------------------- | ------------------------------------------- |
+| `enabled`           | `boolean`                                           | 默认 `false`；需同时开启 `gis.enabled`      |
+| `key`               | `string`                                            | 省略时复用 `gis.imagery.key`                |
+| `mode`              | `'relative' \| 'absolute'`                          | 默认 `'relative'`                           |
+| `toEllipsoidHeight` | `(point: Required<GeographicCoordinate>) => number` | `absolute` 模式必填，同步返回有限米制椭球高 |
+
+相对模式以 `placement.reference` 处 DEM 为基准，其他点取高程差；参考点位于 ENU 零高程平面，水平位置不变。基准缺测则整层保留平面；此模式不证明井口与实际地表已经对齐。
+
+真实高程需要 `placement.heightResolved === true`，并显式提供同步转换函数。以下 `terrain` 对象应作为 `gis.terrain` 传入；`convertDemToPlacementEllipsoid` 由宿主根据已确认的高程基准实现：
+
+```js
+const terrain = {
+  enabled: true,
+  mode: 'absolute',
+  toEllipsoidHeight({ longitude, latitude, height }) {
+    return convertDemToPlacementEllipsoid(longitude, latitude, height)
+  },
+}
+```
+
+输入 `height` 是天地图 DEM 原始米制高程，返回值必须是与配准一致的有限椭球高（米）。只有确认基准一致时才能直接返回 height；正常高需要可靠的大地水准面/似大地水准面转换。SDK 不推断基准，也不将人工常数偏移当作通用转换。配置缺失、回调抛错或返回非有限值时报告错误并保留相应平面影像，不悄悄切换相对模式。真实模式使用完整 ECEF → ENU → 配准逆变换 → 展示偏移；模型和 Marker 坐标始终不变。
+
+SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 高程栅格，采用独立的地理 c 瓦片矩阵和三角插值，不直接复用影像 w 矩阵行列。DEM 数据级别取影像级别与 12 的较小值，影像级别 6 以下报告不支持地形；这是 SDK 的数据级别限制，不保证服务在所有区域和级别均有有效数据。每张影像生成 33×33 地表顶点及独立向下裙边，共享边缘取样一致。缺测值不伪造成零，相机缩放不改变瓦片级别，不支持地形碰撞或自动贴地，模型地表构件不会自动隐藏。
+
+`TerrainStatus` 包含 `status`、`mode`、`loaded`、`failed`、`total` 和可选 `message`。状态为 disabled/loading/ready/partial/error，计数表示目标影像瓦片的 DEM 准备成功/失败数，而非网络请求数；影像和 DEM 分别报告结果。单块失败保留平面，全部失败仍可浏览影像与模型。未知高程基准只能使用相对预览。
+
+影像先以平面显示，地形准备成功后替换网格；材质支持透明度、双面及地下观察。影像与 DEM 合计最多 6 个在途请求，每请求 15 秒超时，无自动重试，DEM 按实例去重并采用 64 MiB 缓存。透明度不触发新请求；改变模式、配准、Key 或转换函数引用会重建图层。请使用稳定的转换函数引用。关闭、切换模型和销毁会取消请求并清空缓存，迟到结果不回到场景。浏览器缺少 DEM 解压能力时地形失败但保留影像。
+
 <a id="types"></a>
 
 ## 10. 公开类型索引
@@ -1184,14 +1278,18 @@ function onGisStatus(status) {
 | `MarkerOverlay`           | 投影标签数组、issues、视口宽高；内部布局数据的公开类型，无独立查询方法 | [标签](#markers)           |
 | `ModelInfo`               | 模型身份、名称、URL、统计、warnings                                    | [加载事件](#model-loading) |
 | `SceneAssociation`        | 可选 `nodes` 源节点索引，Loader 关联辅助类型，无独立查询方法           | [场景读取](#viewer-api)    |
-| `ViewerApi`               | 组件 ref 暴露的 17 个方法                                              | [实例方法](#viewer-api)    |
+| `NavigationOptions`       | `home?`、`cube?`，均默认 true                                          | [导航](#navigation)        |
+| `ViewDirection`           | 六个标准观察方向                                                       | [导航](#navigation)        |
+| `ViewerApi`               | 组件 ref 暴露的 18 个方法                                              | [实例方法](#viewer-api)    |
 | `GeographicCoordinate`    | `longitude`、`latitude`、`height?`                                     | [GIS](#gis)                |
 | `SurveyCoordinate`        | `northing`、`easting`、`height?`                                       | [GIS](#gis)                |
 | `GisControlPoint<T>`      | `{ model: Point3, map: T }`，T 默认 GeographicCoordinate               | [GIS](#gis)                |
 | `GisPlacementOptions`     | 配准输入，CRS 决定地图点类型                                           | [GIS](#gis)                |
 | `GisPlacement`            | 配准矩阵、位置、误差及坐标转换方法                                     | [GIS](#gis)                |
-| `GisOptions`              | 可选平面影像配置，Key/配准/开关/透明度                                 | [GIS](#gis)                |
+| `GisOptions`              | 可选影像与 DEM 配置，Key/配准/开关/透明度                              | [GIS](#gis)                |
 | `GisStatus`               | 图层状态、瓦片计数与可选错误消息                                       | [GIS](#gis)                |
+| `TerrainOptions`          | 相对预览或真实高程模式，独立 Key 与高程转换函数                        | [GIS](#gis)                |
+| `TerrainStatus`           | 独立 DEM 状态、模式、目标瓦片准备计数及错误消息                        | [GIS](#gis)                |
 
 `ModelMetadata`、`LoadedModel`、内部 `createViewer()` 等即使在源码文件中导出，也没有从 package 根入口公开，不作为宿主可直接导入的稳定 API。消费项目应通过包名和公开样式入口接入，不依赖源码路径或未声明的包子路径。
 
@@ -1203,8 +1301,8 @@ function onGisStatus(status) {
 
 安装包包含构建产物、公开类型声明、README、API 文档和许可证。消费项目通过包名及以下子路径接入，不依赖 SDK 源码或构建脚本：
 
-| 入口                                      | 用途                               |
-| ----------------------------------------- | ---------------------------------- |
+| 入口                                       | 用途                               |
+| ------------------------------------------ | ---------------------------------- |
 | `@caojinyu111/vue-bim-viewer`              | ESM/CJS 运行导出与 TypeScript 声明 |
 | `@caojinyu111/vue-bim-viewer/style.css`    | 组件样式，由应用前端构建工具处理   |
 | `@caojinyu111/vue-bim-viewer/package.json` | 包信息                             |
@@ -1257,13 +1355,13 @@ const {
 
 当前支持标准非压缩 GLB/glTF；没有在 Loader 中配置 Draco、KTX2、Meshopt 解码器，也不直接加载 IFC、RVT 等源 BIM 格式。当前包没有模型编辑、任意相机控制、动画播放、裁剪剖切、距离测量或业务模拟等公开能力。
 
-Marker 使用 DOM 标签，没有海量标签布局优化；GIS 方法提供定位计算，SDK 支持可选有限范围的天地图平面影像，不加载地形、注记或其他 GIS 引擎。新增需求应先区分是接入层业务功能，还是需要扩展 SDK 的公开能力。
+Marker 使用 DOM 标签，没有海量标签布局优化；GIS 方法提供定位计算，SDK 支持可选有限范围的天地图影像及 DEM 地形（见 9.11），不加载注记或其他 GIS 引擎。新增需求应先区分是接入层业务功能，还是需要扩展 SDK 的公开能力。
 
 ### 12.1 实际适用范围
 
-适合 Vue 3 网页中的静态三角网格 BIM 浏览、构件树查询、按节点选择/外观、业务标签，以及有限矿区的水平 GIS 配准与平面影像预览。IFC/RVT 等需要先在外部转换成标准非压缩 GLB/glTF。没有配置 Draco、KTX2、Meshopt 解码器；动画、编辑、测量、剖切不在当前公开能力内。InstancedMesh 按对象视为一个构件，不支持逐实例拾取与外观。Line/Points 不属于完整支持的构件外观与包围盒对象。
+适合 Vue 3 网页中的静态三角网格 BIM 浏览、构件树查询、按节点选择/外观、业务标签，以及有限区域的 GIS 配准、天地图影像与 DEM 地形。IFC/RVT 等需要先在外部转换成标准非压缩 GLB/glTF。没有配置 Draco、KTX2、Meshopt 解码器；动画、编辑、测量、剖切不在当前公开能力内。InstancedMesh 按对象视为一个构件，不支持逐实例拾取与外观。Line/Points 不属于完整支持的构件外观与包围盒对象。
 
-GIS 仅接受 EPSG:4529、4490、4326，采用局部水平刚性配准和已知单位换算，不自动拟合缩放或精密基准转换。平面影像无地形、注记和无限漫游；测量使用前需以真实控制点、残差和独立检查点验收。
+GIS 仅接受 EPSG:4529、4490、4326，采用局部水平刚性配准和已知单位换算，不自动拟合缩放或精密基准转换。DEM 默认关闭，不支持注记和无限漫游；真实高程模式需提供可靠高程配准及基准转换，测量使用前需以真实控制点、残差和独立检查点验收。
 
 ### 12.2 已知问题与调用约束
 

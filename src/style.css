@@ -120,10 +120,133 @@
 .mv-map-credit {
   position: absolute;
   z-index: 3;
-  top: 16px;
+  top: var(--mv-map-credit-top, 16px);
   right: 16px;
   padding: 4px 8px;
   background: #101820cc;
   color: #edf4f6;
   font-size: 12px;
+  line-height: 16px;
+}
+
+/* BIMFACE 参考：透明导航、浅灰切角、细边线和房屋图标；所有样式仅作用于 SDK。 */
+.mv-navigation {
+  --mv-navigation-face: #e3e9ec;
+  --mv-navigation-edge: #bcc0c2;
+  --mv-navigation-text: #65727a;
+  --mv-navigation-hover: #c3dce9;
+  --mv-navigation-focus: #315d77;
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  right: 16px;
+  width: 150px;
+  height: 150px;
+  color: var(--mv-navigation-text);
+  pointer-events: none;
+  user-select: none;
+}
+.mv-navigation-home-only {
+  width: 44px;
+  height: 44px;
+}
+.mv-navigation:focus-visible {
+  outline: 2px solid var(--mv-navigation-focus);
+  outline-offset: 2px;
+}
+.mv-navigation-cube {
+  display: block;
+  width: 150px;
+  height: 150px;
+  overflow: visible;
+}
+.mv-navigation-region {
+  cursor: pointer;
+  outline: none;
+}
+.mv-navigation-region polygon {
+  fill: var(--mv-navigation-face);
+  stroke: var(--mv-navigation-edge);
+  stroke-width: 1px;
+  stroke-linejoin: round;
+  pointer-events: auto;
+}
+.mv-navigation-edge polygon,
+.mv-navigation-corner polygon {
+  fill: #dce3e7;
+}
+.mv-navigation-region text {
+  fill: currentColor;
+  font:
+    400 0.65px 'Microsoft YaHei',
+    'PingFang SC',
+    sans-serif;
+  pointer-events: none;
+}
+.mv-navigation-region:hover polygon {
+  fill: var(--mv-navigation-hover);
+  stroke: var(--mv-navigation-focus);
+}
+.mv-navigation-region:active polygon {
+  fill: #aabfcd;
+}
+.mv-navigation-region:focus-visible polygon {
+  fill: var(--mv-navigation-hover);
+  stroke: var(--mv-navigation-focus);
+  stroke-width: 2px;
+}
+.mv-navigation-region[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.mv-navigation-region[aria-disabled='true'] polygon {
+  fill: var(--mv-navigation-face);
+  stroke: var(--mv-navigation-edge);
+}
+.mv-navigation-home {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mv-navigation-edge);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.mv-navigation-home svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  fill: var(--mv-navigation-face);
+  stroke: currentColor;
+  stroke-width: 1px;
+  stroke-linejoin: round;
+}
+.mv-navigation-home:hover {
+  color: var(--mv-navigation-focus);
+}
+.mv-navigation-home:hover svg {
+  fill: var(--mv-navigation-hover);
+}
+.mv-navigation-home:active svg {
+  fill: #aabfcd;
+}
+.mv-navigation-home:focus-visible {
+  outline: 2px solid var(--mv-navigation-focus);
+  outline-offset: 2px;
+}
+.mv-navigation-home:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  color: var(--mv-navigation-edge);
+}
+.mv-navigation-home:disabled svg {
+  fill: var(--mv-navigation-face);
 }

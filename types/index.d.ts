@@ -1,7 +1,7 @@
 export { default as MineViewer } from './MineViewer.js'
 export type * from './types.js'
 export type * from './gis.js'
-export type { GisOptions, GisStatus } from './gis-imagery.js'
+export type { GisOptions, GisStatus, TerrainOptions, TerrainStatus } from './gis-imagery.js'
 
 import type { ComponentNode, ComponentTree } from './types.js'
 import type { GisPlacement, GisPlacementOptions } from './gis.js'

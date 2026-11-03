@@ -146,6 +146,14 @@ export interface ModelInfo {
 export interface SceneAssociation {
   nodes?: number
 }
+export interface NavigationOptions {
+  /** 显示 Home 按钮，默认 true。 */
+  home?: boolean
+  /** 显示 26 方向导航骰子，默认 true。 */
+  cube?: boolean
+}
+export type ViewDirection = 'top' | 'bottom' | 'left' | 'right' | 'front' | 'back'
+
 /** 高级接口返回活的 Three 对象；只读使用，不能存入 localStorage。 */
 export interface ViewerApi {
   /** 返回独立的完整树快照；就绪前为 null，修改快照不影响运行状态。 */
@@ -180,6 +188,8 @@ export interface ViewerApi {
   focusComponent(id: string, options?: CameraTransitionOptions): boolean
   /** 按 initialView 平滑适配整个模型；未就绪或非法时长返回 false。 */
   resetView(options?: CameraTransitionOptions): boolean
+  /** 切换六个标准方向，保持观察目标和距离；未就绪、非法方向或时长返回 false。 */
+  setViewDirection(direction: ViewDirection, options?: CameraTransitionOptions): boolean
   /** 取消上一次未完成加载；候选失败时保留最后成功的场景。 */
   reload(): Promise<void>
 }

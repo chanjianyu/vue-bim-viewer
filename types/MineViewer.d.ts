@@ -1,5 +1,5 @@
 import type { ComponentOptionsMixin, DefineComponent } from 'vue'
-import type { GisOptions, GisStatus } from './gis-imagery.js'
+import type { GisOptions, GisStatus, TerrainStatus } from './gis-imagery.js'
 import type {
   AppearanceEvent,
   BackgroundOptions,
@@ -10,6 +10,7 @@ import type {
   Marker,
   ModelInfo,
   ModelSource,
+  NavigationOptions,
   ProjectedMarker,
   ViewerApi,
 } from './types.js'
@@ -21,6 +22,7 @@ type Props = {
   cameraTransition?: CameraTransitionOptions
   gis?: GisOptions
   background?: BackgroundOptions
+  navigation?: NavigationOptions
 }
 
 type Events = {
@@ -31,6 +33,7 @@ type Events = {
   'appearance-change': (event: AppearanceEvent) => void
   'marker-click': (marker: Marker) => void
   'gis-status': (status: GisStatus) => void
+  'terrain-status': (status: TerrainStatus) => void
   'background-error': (error: { message: string }) => void
 }
 

@@ -17,11 +17,21 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
 import { createCameraMotion } from './camera-motion.js'
+import { createCameraNavigation } from './navigation/camera-navigation.js'
 import { projectMarkers } from './markers.js'
-import { createImageryLayer, createImageryPlan } from './gis-imagery.js'
+import { createImageryPlan } from './gis/projection.js'
+import { createImageryLayer } from './gis/layer.js'
 
 /** 一个 Viewer 管理自己的 GPU、相机、选择轮廓及可选影像层；不包含矿山业务数据。 */
-export function createViewer(container, onOverlay, onContextLost, onGisStatus, onBackgroundError) {
+export function createViewer(
+  container,
+  onOverlay,
+  onContextLost,
+  onGisStatus,
+  onBackgroundError,
+  onNavigation,
+  onTerrainStatus,
+) {
   const scene = new Scene()
   const camera = new PerspectiveCamera(42, 1, 0.01, 100000)
   const renderer = new WebGLRenderer({ antialias: true })
@@ -34,6 +44,7 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
   controls.enableDamping = true
   controls.dampingFactor = 0.09
   const motion = createCameraMotion(camera, controls)
+  const navigation = createCameraNavigation(camera, controls, motion)
   controls.addEventListener('start', motion.cancel)
   scene.add(new HemisphereLight('#e5efff', '#758096', 2.6))
   const key = new DirectionalLight('#fff2dc', 2.7)
@@ -63,11 +74,16 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
   let selected = null
   let imagery
   let imageryIdentity = ''
+  let terrainHeightTransform
+  let navigationVisible = false,
+    lastOrientation,
+    contextAvailable = true
   const background = createBackground(scene, invalidate, onBackgroundError)
   function clearImagery() {
     imagery?.dispose()
     imagery = undefined
     imageryIdentity = ''
+    terrainHeightTransform = undefined
   }
   function updateClip() {
     if (!imagery) return
@@ -89,7 +105,17 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
     if (destroyed) return
     const moving = motion.update(now)
     controls.update()
+    if (
+      navigationVisible &&
+      current &&
+      (!lastOrientation || !camera.quaternion.equals(lastOrientation))
+    ) {
+      lastOrientation = camera.quaternion.clone()
+      const { x, y, z, w } = lastOrientation
+      onNavigation?.({ x, y, z, w })
+    }
     updateClip()
+    imagery?.update(camera)
     const visibleSelection =
       selected &&
       components &&
@@ -122,6 +148,7 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
   resize()
   const contextLost = (event) => {
     event.preventDefault()
+    contextAvailable = false
     motion.cancel()
     if (!destroyed) onContextLost()
   }
@@ -172,6 +199,7 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
     show(model, index, state, view = {}) {
       clearImagery()
       onGisStatus({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
+      onTerrainStatus?.({ status: 'disabled', mode: 'relative', loaded: 0, failed: 0, total: 0 })
       current?.root.removeFromParent()
       selected = null
       outline.selectedObjects = []
@@ -179,6 +207,7 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
       components = index
       appearance = state
       initialView = view
+      lastOrientation = undefined
       scene.add(model.root)
       renderer.renderLists.dispose()
       fit(model.root, true, { duration: 0 })
@@ -188,6 +217,13 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
       if (!current || !options?.enabled) {
         clearImagery()
         onGisStatus({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
+        onTerrainStatus?.({
+          status: 'disabled',
+          mode: options?.terrain?.mode ?? 'relative',
+          loaded: 0,
+          failed: 0,
+          total: 0,
+        })
         invalidate()
         return
       }
@@ -203,9 +239,16 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
           placement.localMatrix,
           placement.ecefMatrix,
           options.imagery.key,
+          placement.heightResolved,
+          options.terrain?.enabled ?? false,
+          options.terrain?.enabled ? (options.terrain.mode ?? 'relative') : null,
+          options.terrain?.enabled ? (options.terrain.key ?? null) : null,
         ])
         // 透明度更新不重建瓦片，也不会重新消耗地图请求。
-        if (imagery && imageryIdentity === identity) {
+        const heightTransform = options.terrain?.enabled
+          ? options.terrain.toEllipsoidHeight
+          : undefined
+        if (imagery && imageryIdentity === identity && terrainHeightTransform === heightTransform) {
           imagery.setOpacity(opacity)
           return
         }
@@ -214,8 +257,17 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
           .setFromObject(current.root, true)
           .translate(current.offset.clone().negate())
         const plan = createImageryPlan(rawBounds, placement, current.offset)
-        imagery = createImageryLayer(plan, options.imagery.key, opacity, onGisStatus, invalidate)
+        imagery = createImageryLayer(
+          plan,
+          options.imagery.key,
+          opacity,
+          onGisStatus,
+          invalidate,
+          options.terrain ? { ...options.terrain } : undefined,
+          onTerrainStatus,
+        )
         imageryIdentity = identity
+        terrainHeightTransform = heightTransform
         scene.add(imagery.root)
         updateClip()
         invalidate()
@@ -227,6 +279,14 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
           failed: 0,
           total: 0,
           message: cause instanceof Error ? cause.message : '地图配置无效',
+        })
+        onTerrainStatus?.({
+          status: options.terrain?.enabled ? 'error' : 'disabled',
+          mode: options.terrain?.mode ?? 'relative',
+          loaded: 0,
+          failed: 0,
+          total: 0,
+          ...(options.terrain?.enabled ? { message: '地图配置无效，无法准备 DEM' } : {}),
         })
         invalidate()
       }
@@ -243,7 +303,25 @@ export function createViewer(container, onOverlay, onContextLost, onGisStatus, o
       return fit(object, false, options)
     },
     reset(options) {
-      return current ? fit(current.root, true, options) : false
+      return current && !destroyed && contextAvailable ? fit(current.root, true, options) : false
+    },
+    setNavigationVisible(visible) {
+      if (destroyed || navigationVisible === visible) return
+      navigationVisible = visible
+      lastOrientation = undefined
+      if (visible) invalidate()
+    },
+    setViewDirection(direction, options) {
+      if (!current || destroyed || !contextAvailable) return false
+      const accepted = navigation.setViewDirection(direction, options)
+      if (accepted) invalidate()
+      return accepted
+    },
+    navigate(direction, options) {
+      if (!current || destroyed || !contextAvailable) return false
+      const accepted = navigation.navigate(direction, options)
+      if (accepted) invalidate()
+      return accepted
     },
     pick(clientX, clientY) {
       // client 坐标先换算为画布归一化坐标；隐藏及完全透明的构件不参与选择。

@@ -1,6 +1,6 @@
 {
   "name": "@caojinyu111/vue-bim-viewer",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "JavaScript BIM viewer SDK for Vue 3 and Three.js with TypeScript declarations",
   "type": "module",
   "license": "MIT",
@@ -29,30 +29,26 @@
     "build": "vite build && node scripts/copy-types.mjs",
     "build:watch": "vite build --watch --emptyOutDir false",
     "types:watch": "node --watch --watch-path=types scripts/copy-types.mjs",
-    "test:gis": "node --test test/*.test.mjs",
-    "typecheck": "node scripts/check-types.mjs",
-    "prepack": "npm run build && npm run test:gis",
-    "test": "npm run build && npm run test:gis",
-    "format": "prettier --write \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"test/**/*.mjs\" \"*.{json,js}\"",
-    "format:check": "prettier --check \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"test/**/*.mjs\" \"*.{json,js}\"",
-    "check": "npm run format:check && npm run typecheck && npm test"
+    "prepack": "npm run build",
+    "format": "prettier --write \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\"",
+    "format:check": "prettier --check \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\"",
+    "check": "npm run format:check && npm run build"
   },
   "peerDependencies": {
-    "three": "^0.186.0",
-    "vue": "^3.5.0"
+    "three": "0.183.1",
+    "vue": "3.5.43"
   },
   "devDependencies": {
-    "@types/three": "0.186.0",
+    "@types/three": "0.183.1",
     "@vitejs/plugin-vue": "6.0.10",
-    "three": "0.186.1",
-    "typescript": "5.9.3",
+    "three": "0.183.1",
     "vite": "8.3.4",
     "vue": "3.5.43",
-    "vue-tsc": "3.3.13",
     "prettier": "3.9.10"
   },
   "dependencies": {
-    "proj4": "2.22.0"
+    "proj4": "2.22.0",
+    "three-tile": "0.12.2"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

@@ -4,6 +4,8 @@ import { loadModel } from './model.js'
 import { cloneComponent, cloneComponentTree, createComponents, sceneTree } from './components.js'
 import { createAppearance } from './appearance.js'
 import { createViewer } from './viewer.js'
+import CameraNavigation from './navigation/CameraNavigation.vue'
+import { resolveNavigation } from './navigation/view-cube.js'
 
 const props = defineProps({
   modelSource: { type: Object, required: true },
@@ -12,6 +14,7 @@ const props = defineProps({
   cameraTransition: { type: Object },
   gis: { type: Object },
   background: { type: Object },
+  navigation: { type: Object },
 })
 const emit = defineEmits([
   'model-loaded',
@@ -21,9 +24,13 @@ const emit = defineEmits([
   'appearance-change',
   'marker-click',
   'gis-status',
+  'terrain-status',
   'background-error',
 ])
 const viewport = ref()
+const navigationReady = ref(false)
+const orientation = shallowRef({ x: 0, y: 0, z: 0, w: 1 })
+const navigationState = computed(() => resolveNavigation(props.navigation))
 const loading = ref(false),
   error = ref(''),
   progress = ref('准备加载'),
@@ -33,9 +40,14 @@ const overlay = shallowRef({ markers: [], issues: [], width: 0, height: 0 })
 const notices = shallowRef([])
 const gisStatus = shallowRef({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
 let viewer
+let contextAvailable = true
 let model, components, appearance
 let pending,
   generation = 0
+watch(
+  () => navigationState.value.cube,
+  (visible) => viewer?.setNavigationVisible(visible),
+)
 const activeMarker = computed(() =>
   overlay.value.markers.find((marker) => marker.id === activeMarkerId.value && marker.visible),
 )
@@ -93,6 +105,7 @@ async function reload() {
     const previous = model,
       previousAppearance = appearance
     viewer.show(candidate, index, candidateAppearance, props.initialView)
+    navigationReady.value = contextAvailable
     model = candidate
     components = index
     appearance = candidateAppearance
@@ -159,10 +172,24 @@ function activateMarker(marker) {
 }
 function popupStyle(x, y) {
   const width = Math.min(300, Math.max(0, overlay.value.width - 32))
+  const left = Math.max(16, Math.min(x + 24, overlay.value.width - width - 16))
+  let top = Math.max(16, Math.min(y + 24, overlay.value.height - 240))
+  const navigationHeight = navigationState.value.height
+  const navigationWidth = navigationState.value.cube ? 150 : 44
+  const creditVisible = props.gis?.enabled && gisStatus.value.loaded
+  const reservedBottom = (navigationHeight ? navigationHeight + 24 : 16) + (creditVisible ? 32 : 0)
+  const reservedWidth = Math.max(navigationHeight ? navigationWidth : 0, creditVisible ? 150 : 0)
+  if (
+    reservedWidth &&
+    left + width > overlay.value.width - reservedWidth - 16 &&
+    top < reservedBottom
+  )
+    top = reservedBottom
   return {
-    left: `${Math.max(16, Math.min(x + 24, overlay.value.width - width - 16))}px`,
-    top: `${Math.max(16, Math.min(y + 24, overlay.value.height - 240))}px`,
+    left: `${left}px`,
+    top: `${top}px`,
     width: `${width}px`,
+    maxHeight: `${Math.min(320, Math.max(40, overlay.value.height - top - 16))}px`,
   }
 }
 
@@ -192,6 +219,8 @@ const api = {
       : false
   },
   resetView: (options) => viewer?.reset({ ...props.cameraTransition, ...options }) || false,
+  setViewDirection: (direction, options) =>
+    viewer?.setViewDirection(direction, { ...props.cameraTransition, ...options }) || false,
   reload,
 }
 defineExpose(api)
@@ -203,6 +232,8 @@ onMounted(() => {
         overlay.value = value
       },
       () => {
+        contextAvailable = false
+        navigationReady.value = false
         pending?.abort()
         error.value = '图形上下文已中断，请重新打开页面'
         emit('model-error', { message: error.value })
@@ -212,7 +243,12 @@ onMounted(() => {
         emit('gis-status', status)
       },
       (value) => emit('background-error', value),
+      (value) => {
+        orientation.value = value
+      },
+      (value) => emit('terrain-status', value),
     )
+    viewer.setNavigationVisible(navigationState.value.cube)
     viewer.setBackground(props.background)
     void reload()
   } catch (cause) {
@@ -235,7 +271,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="mv-viewer" aria-label="BIM 模型查看器" @keydown.esc="activeMarkerId = null">
+  <section
+    class="mv-viewer"
+    :style="{
+      '--mv-map-credit-top': `${navigationState.height ? navigationState.height + 24 : 16}px`,
+    }"
+    aria-label="BIM 模型查看器"
+    @keydown.esc="activeMarkerId = null"
+  >
     <div
       ref="viewport"
       class="mv-viewport"
@@ -281,6 +324,13 @@ onBeforeUnmount(() => {
       </article>
     </div>
     <div v-if="loading" class="mv-status" role="status">{{ progress }}…</div>
+    <CameraNavigation
+      :options="navigation"
+      :orientation="orientation"
+      :disabled="!navigationReady"
+      @home="api.resetView()"
+      @navigate="viewer?.navigate($event, props.cameraTransition)"
+    />
     <a
       v-if="gis?.enabled && gisStatus.loaded"
       class="mv-map-credit"
