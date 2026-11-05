@@ -6,6 +6,8 @@ import { createAppearance } from './appearance.js'
 import { createViewer } from './viewer.js'
 import CameraNavigation from './navigation/CameraNavigation.vue'
 import { resolveNavigation } from './navigation/view-cube.js'
+import ComponentTreePanel from './component-tree/ComponentTreePanel.vue'
+import { indexTree, visibilityUpdates } from './component-tree/tree-state.js'
 
 const props = defineProps({
   modelSource: { type: Object, required: true },
@@ -31,6 +33,10 @@ const viewport = ref()
 const navigationReady = ref(false)
 const orientation = shallowRef({ x: 0, y: 0, z: 0, w: 1 })
 const navigationState = computed(() => resolveNavigation(props.navigation))
+const componentTree = shallowRef(null)
+const selectedComponentId = ref(null)
+const selectionRevision = ref(0)
+const appearanceRevision = ref(0)
 const loading = ref(false),
   error = ref(''),
   progress = ref('准备加载'),
@@ -99,6 +105,7 @@ async function reload() {
     }
     const index = createComponents([candidate.scene], candidate)
     candidateAppearance = createAppearance(index, (event) => {
+      appearanceRevision.value++
       viewer?.refresh()
       emit('appearance-change', event)
     })
@@ -109,6 +116,9 @@ async function reload() {
     model = candidate
     components = index
     appearance = candidateAppearance
+    componentTree.value = cloneComponentTree(index.tree)
+    selectedComponentId.value = null
+    appearanceRevision.value++
     // 先恢复旧模型源材质并释放外观克隆，再释放几何、原材质与纹理。
     previousAppearance?.dispose()
     previous?.dispose()
@@ -149,8 +159,19 @@ function selectComponent(id) {
   if (id && !components?.byId.has(id)) return false
   viewer?.select(id ? components?.renderObjects.get(id) || null : null)
   const node = id ? components?.byId.get(id) : null
+  selectedComponentId.value = node?.id || null
+  selectionRevision.value++
   emit('component-select', node ? cloneComponent(node) : null)
   return Boolean(viewer && components)
+}
+function selectFromDirectory(id) {
+  if (!selectComponent(id)) return
+  // 目录中的空节点只选中；公开 focusComponent 仍保留原有原点定位行为。
+  if (components?.byId.get(id)?.bounds) api.focusComponent(id)
+}
+function setDirectoryVisibility({ id, visible }) {
+  if (!components || !appearance) return
+  appearance.apply(visibilityUpdates(indexTree(components.tree), id, visible, appearance.get))
 }
 let pointer
 function pointerUp(event) {
@@ -209,8 +230,18 @@ const api = {
   setComponentAppearances: (updates) => appearance?.apply(updates) || notReady(),
   getAppearanceChanges: () => appearance?.changes() || null,
   applyAppearanceChanges: (value) => appearance?.importChanges(value) || notReady(),
-  restoreComponent: (id) => appearance?.restore(id) || notReady(),
-  restoreAllComponents: () => appearance?.restore() || notReady(),
+  restoreComponent: (id) => {
+    if (!appearance) return notReady()
+    if (typeof id !== 'string' || !id.trim())
+      return {
+        changedIds: [],
+        unknownIds: [],
+        skipped: [],
+        error: 'restoreComponent 需要传入当前模型中的有效构件 ID',
+      }
+    return appearance.restore(id)
+  },
+  restoreAllComponents: () => appearance?.restoreAll() || notReady(),
   selectComponent,
   focusComponent: (id, options) => {
     const object = components?.renderObjects.get(id)
@@ -330,6 +361,17 @@ onBeforeUnmount(() => {
       :disabled="!navigationReady"
       @home="api.resetView()"
       @navigate="viewer?.navigate($event, props.cameraTransition)"
+    />
+    <ComponentTreePanel
+      :enabled="navigationState.componentTree"
+      :tree="componentTree"
+      :selected-id="selectedComponentId"
+      :selection-revision="selectionRevision"
+      :appearance-revision="appearanceRevision"
+      :get-appearance="api.getComponentAppearance"
+      :loading="loading"
+      @select="selectFromDirectory"
+      @visibility="setDirectoryVisibility"
     />
     <a
       v-if="gis?.enabled && gisStatus.loaded"

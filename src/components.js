@@ -1,4 +1,4 @@
-import { Box3, InstancedMesh, Mesh, Vector3 } from 'three'
+import { Box3, Vector3 } from 'three'
 import { isRecord } from './model.js'
 
 export const point3 = (v) => ({ x: v.x, y: v.y, z: v.z })
@@ -73,10 +73,10 @@ export function createComponents(roots, options) {
   for (let i = objects.length - 1; i >= 0; i--) {
     const object = objects[i],
       box = new Box3()
-    if (object instanceof InstancedMesh) {
+    if (object?.isInstancedMesh === true) {
       object.computeBoundingBox()
       if (object.boundingBox) box.copy(object.boundingBox).applyMatrix4(object.matrixWorld)
-    } else if (object instanceof Mesh) {
+    } else if (object?.isMesh === true) {
       if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
       if (object.geometry.boundingBox)
         box.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld)
@@ -133,7 +133,7 @@ export function createComponents(roots, options) {
       type: object.type,
       parentId: null,
       children: [],
-      hasGeometry: object instanceof Mesh,
+      hasGeometry: object?.isMesh === true,
       bounds,
       metadata: {
         ...structuredClone(object.userData),

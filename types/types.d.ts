@@ -1,5 +1,5 @@
 import type { Object3D } from 'three'
-/** 坐标均为模型原始米制坐标；内部展示居中不改变这个坐标空间。 */
+/** 坐标均为模型原始坐标单位；内部展示居中不改变这个坐标空间。 */
 export interface Point3 {
   x: number
   y: number
@@ -109,7 +109,7 @@ export interface Marker {
         type: 'component'
         componentId: string
         anchor?: Anchor
-        /** 在模型坐标轴上偏移，单位沿用模型（glTF 约定米）。 */
+        /** 在模型坐标轴上偏移，单位沿用模型原始坐标单位。 */
         offset?: Point3
       }
   /** CSS 像素：x 向右、y 向下，仅调整标签显示位置。 */
@@ -151,6 +151,8 @@ export interface NavigationOptions {
   home?: boolean
   /** 显示 26 方向导航骰子，默认 true。 */
   cube?: boolean
+  /** 显示左上角构件目录按钮，默认 true；面板初始关闭。 */
+  componentTree?: boolean
 }
 export type ViewDirection = 'top' | 'bottom' | 'left' | 'right' | 'front' | 'back'
 
@@ -166,7 +168,7 @@ export interface ViewerApi {
   getComponentId(node: Object3D): string | null
   /** 返回该节点及其后代的独立快照；未知 ID 或未就绪时返回 null。 */
   getComponent(id: string): ComponentNode | null
-  /** 按 ID 取模型空间锚点（米），默认对象原点；无几何不能查询包围盒锚点。 */
+  /** 按 ID 取源模型空间锚点，单位沿用模型；默认对象原点；无几何不能查询包围盒锚点。 */
   getComponentAnchor(id: string, anchor?: Anchor): Point3 | null
   /** own 为自身覆盖，effective 包含父级继承，initial 为逻辑初始状态。 */
   getComponentAppearance(id: string): AppearanceState | null
@@ -178,11 +180,11 @@ export interface ViewerApi {
   getAppearanceChanges(): AppearanceChangeSet | null
   /** 合并导入；先检查模型身份、资源版本与所有字段，失败时不产生部分修改。 */
   applyAppearanceChanges(value: unknown): OperationResult
-  /** 仅恢复该节点自身覆盖，后代独立覆盖继续保留。 */
+  /** 仅恢复该节点自身覆盖，后代独立覆盖保留；漏传或空 ID 返回 error，未知 ID 返回 unknownIds，均不修改外观。 */
   restoreComponent(id: string): OperationResult
   /** 删除全部自身覆盖，回到模型初始外观。 */
   restoreAllComponents(): OperationResult
-  /** null 清除选择；返回 false 表示当前未就绪或构件不存在。 */
+  /** 内置青绿色高亮与细轮廓，不计入外观差异；null 清除，未就绪或 ID 无效返回 false。 */
   selectComponent(id: string | null): boolean
   /** 平滑定位构件；空节点使用原点，未知 ID、未就绪或非法时长返回 false。 */
   focusComponent(id: string, options?: CameraTransitionOptions): boolean

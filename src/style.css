@@ -210,9 +210,9 @@
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: 44px;
-  height: 44px;
-  padding: 10px;
+  width: 45px;
+  height: 45px;
+  padding: 5px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -220,10 +220,10 @@
   cursor: pointer;
   pointer-events: auto;
 }
-.mv-navigation-home svg {
+.mv-navigation-home .mv-svg-icon {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 35px;
+  height: 35px;
   fill: var(--mv-navigation-face);
   stroke: currentColor;
   stroke-width: 1px;
@@ -232,10 +232,10 @@
 .mv-navigation-home:hover {
   color: var(--mv-navigation-focus);
 }
-.mv-navigation-home:hover svg {
+.mv-navigation-home:hover .mv-svg-icon {
   fill: var(--mv-navigation-hover);
 }
-.mv-navigation-home:active svg {
+.mv-navigation-home:active .mv-svg-icon {
   fill: #aabfcd;
 }
 .mv-navigation-home:focus-visible {
@@ -247,6 +247,6 @@
   cursor: not-allowed;
   color: var(--mv-navigation-edge);
 }
-.mv-navigation-home:disabled svg {
+.mv-navigation-home:disabled .mv-svg-icon {
   fill: var(--mv-navigation-face);
 }

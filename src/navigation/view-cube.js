@@ -117,5 +117,10 @@ export function projectViewCube(orientation) {
 export function resolveNavigation(options) {
   const home = options?.home !== false,
     cube = options?.cube !== false
-  return { home, cube, height: cube ? 150 : home ? 44 : 0 }
+  return {
+    home,
+    cube,
+    componentTree: options?.componentTree !== false,
+    height: cube ? 150 : home ? 44 : 0,
+  }
 }

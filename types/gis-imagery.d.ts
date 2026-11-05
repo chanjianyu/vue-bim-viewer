@@ -20,7 +20,7 @@ export type TerrainOptions = {
   | { mode?: 'relative' }
   | {
       mode: 'absolute'
-      /** DEM 原始高程（米）转换为配准所用基准的椭球高（米）；必须同步返回有限数值。 */
+      /** DEM 原始高程（米）转换为配准所用基准的椭球高（米）；必须同步返回有限 number，不接受类型转换。 */
       toEllipsoidHeight: (point: Required<GeographicCoordinate>) => number
     }
 )

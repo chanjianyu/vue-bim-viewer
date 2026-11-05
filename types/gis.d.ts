@@ -13,12 +13,12 @@ export interface SurveyCoordinate {
   height?: number
 }
 export interface GisControlPoint<T = GeographicCoordinate> {
-  /** 原始模型坐标，与 getComponentAnchor 使用相同空间，不含展示居中偏移。 */
+  /** 原始模型坐标，单位沿用源模型，与 getComponentAnchor 使用相同空间，不含展示居中偏移。 */
   model: Point3
   map: T
 }
 export type GisPlacementOptions = {
-  /** 默认最小二乘；first-point 固定首点，其他点只等权确定方向，不拟合比例。 */
+  /** 默认最小二乘要求点分散且不共线；first-point 固定首点，其他点只等权确定方向，不拟合比例。 */
   horizontalAlignment?: 'least-squares' | 'first-point'
   /** glTF 通常 Y 向上；原始 Z 向上模型须显式指定 z。 */
   modelUpAxis?: 'y' | 'z'

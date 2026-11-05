@@ -1,6 +1,6 @@
 {
   "name": "@caojinyu111/vue-bim-viewer",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "JavaScript BIM viewer SDK for Vue 3 and Three.js with TypeScript declarations",
   "type": "module",
   "license": "MIT",
@@ -30,8 +30,8 @@
     "build:watch": "vite build --watch --emptyOutDir false",
     "types:watch": "node --watch --watch-path=types scripts/copy-types.mjs",
     "prepack": "npm run build",
-    "format": "prettier --write \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\"",
-    "format:check": "prettier --check \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\"",
+    "format": "prettier --write \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\" && prettier --write --parser html \"src/assets/svg/**/*.svg\"",
+    "format:check": "prettier --check \"src/**/*.{js,vue,css}\" \"types/**/*.ts\" \"scripts/**/*.mjs\" \"*.{json,js}\" && prettier --check --parser html \"src/assets/svg/**/*.svg\"",
     "check": "npm run format:check && npm run build"
   },
   "peerDependencies": {

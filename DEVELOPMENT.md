@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.3.2**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
+本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.3.3**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
 
 ## 环境与安装
 
@@ -15,26 +15,38 @@ npm run check
 
 ## 工程结构
 
-| 目录或文件           | 职责                                                    |
-| -------------------- | ------------------------------------------------------- |
-| `src/index.js`       | 公开运行入口和样式导入                                  |
-| `src/MineViewer.vue` | JavaScript Vue 组件、Props、事件、插槽及实例方法        |
-| `src/*.js`           | 渲染、模型、构件、外观、相机、背景、Marker、GIS 与影像  |
-| `src/gis/`           | 地图坐标适配、three-tile 图层、DEM 数据与网格、请求预算 |
-| `src/navigation/`    | Home、26 方向骰子及相机方向同步                         |
-| `src/style.css`      | 组件样式                                                |
-| `types/`             | 公开 `.d.ts`，包括组件、数据结构与 GIS 声明             |
-| `scripts/`           | 构建时复制公开声明                                      |
-| `AGENTS.md`          | 后续开发与统一宿主验证约定                              |
-| `dist/`              | 自动生成的 ESM、CJS、CSS 与声明文件                     |
+| 目录或文件            | 职责                                                    |
+| --------------------- | ------------------------------------------------------- |
+| `src/index.js`        | 公开运行入口和样式导入                                  |
+| `src/MineViewer.vue`  | JavaScript Vue 组件、Props、事件、插槽及实例方法        |
+| `src/*.js`            | 渲染、模型、构件、外观、相机、背景、Marker、GIS 与影像  |
+| `src/selection.js`    | 内置选中填色、轮廓和临时材质生命周期                    |
+| `src/gis/`            | 地图坐标适配、three-tile 图层、DEM 数据与网格、请求预算 |
+| `src/navigation/`     | Home、26 方向骰子及相机方向同步                         |
+| `src/component-tree/` | 独立构件目录组件、搜索与展开、分支三态和批量显隐计算    |
+| `src/assets/svg/`     | Home、构件目录及面板使用的静态 SVG 图标                 |
+| `src/SvgIcon.vue`     | 内部装饰图标组件，显示本地 SVG 原始内容                 |
+| `src/style.css`       | 组件样式                                                |
+| `types/`              | 公开 `.d.ts`，包括组件、数据结构与 GIS 声明             |
+| `scripts/`            | 构建时复制公开声明                                      |
+| `AGENTS.md`           | 后续开发与统一宿主验证约定                              |
+| `dist/`               | 自动生成的 ESM、CJS、CSS 与声明文件                     |
 
 修改源码和 `types/`，通过构建生成 `dist/`。修改公开接口时，应同步更新运行实现、独立声明、文档及宿主接入。
+
+静态图标保存在 `src/assets/svg/`，通过 `import icon from '../assets/svg/home.svg?raw'` 导入，并交给内部 `SvgIcon` 的 `source` 属性显示。仅使用可信的本地 SVG，不传入外部 HTML。保留各图标的 `viewBox`，由调用组件的 CSS 控制尺寸、填充、描边及 `currentColor`；局部填充直接写在 SVG 路径属性中。按钮负责事件、焦点和无障碍名称，图标仅作装饰。动态方向骰子保留 `ViewCube.vue` 中的 SVG 模板，以支持相机同步和方向交互。SVG 内容会内嵌到 ESM/CJS 产物，宿主无需配置资源路径，也不额外请求图标文件。
+
+构件目录只持有模型树快照、搜索与展开状态，通过外观查询和变更计数同步三态。显隐操作批量提交给已有 appearance 实例；选择共用 `selectComponent`，目录名称点击再组合定位。隐藏构件不自动显示，空节点不移动相机；公开 API 的单独选择和原点定位行为保持独立。`navigation.componentTree` 默认 true，关闭只隐藏目录界面。验证时覆盖与宿主自有树和外观面板的交叉操作，以及隐藏祖先下单独显示子分支、模型重载、窄屏鼠标操作和原生控件焦点顺序。
+
+目录按钮与面板互斥显示，首次打开从距场景顶、左各 16px 的按钮原位置开始。`ComponentTreePanel.vue` 的 `position` 变量在同一实例内保存移动位置，关闭、配置隐藏或模型重载不重置，重新挂载或刷新页面后恢复默认值，不使用本地存储。通过 Pointer Events 和指针捕获处理标题栏拖动，标题文字和空白处显示移动光标，关闭按钮显示手形光标并阻止拖动启动；位置按目录容器的局部坐标计算，并限制四周 16px 边界。打开时修正越界位置；ResizeObserver 仅在面板打开时监听场景尺寸，尺寸变化时结束拖动并保存修正后的位置；关闭、禁用或卸载时释放指针捕获并清理尺寸监听。目录不注册键盘监听或行焦点导航，保留搜索输入和原生控件键盘行为。拖动不改变搜索、展开、显隐和选择状态。验证覆盖关闭重开、配置切换和重载后的位置记忆、边界、窗口尺寸及全屏变化、指针离开标题栏、关闭后的焦点恢复，以及场景事件隔离。
 
 地图使用 TileMap 和有限根节点适配器，优先 16 级、最多 256 张；不使用全球 LOD。影像与可选 DEM 共享 6 并发和取消信号。每个实例独立统计影像与 terrain-status，Viewer 在按需渲染帧调用 update；图片和地形完成后触发刷新。关闭后停止调度并取消请求，迟到图像和几何会释放，不再添加到场景或通知宿主。透明度改变不重新请求数据。模型拾取、树、外观和标签不访问地图节点。
 
 DEM 默认关闭；相对模式以配准参考点的 DEM 高程为零，真实模式需要可靠高程配准及椭球高转换。`terrain-source.js` 适配天地图 zlib/150×150 UInt16 小端高程栅格、c 矩阵、三角插值与每实例 64 MiB 缓存；`terrain-geometry.js` 生成 33×33 地表与裙边；`requests.js` 管理共享请求预算。DEM 数据级别取影像级别与 12 的较小值，影像级别低于 6 时不支持地形；无有效响应或样本缺测时报告错误，不将其视为零高程。高程基准未确认时只能使用相对预览。完整公开配置、限制与事件见 API 9.11。
 
-three-tile/plugin 在启用地图时延迟导入，避免其 GeoJSON 初始化依赖 OffscreenCanvas 导致 Node/SSR 导入失败。构建会生成私有共享块与插件块（ESM/CJS 各自一套），它们随整个 `dist/` 分发，不作为公开子路径。不要只复制 `index.js` 或 `index.cjs`。
+GIS 控制点的模型坐标沿用源模型单位；默认最小二乘配准要求水平分散且不共线，`first-point` 模式由首点固定位置、其余点确定方向。`metersPerUnit` 负责将模型单位换算为 GIS 使用的米制坐标。
+
+three-tile/plugin 在启用地图时延迟导入，避免其 GeoJSON 初始化依赖 OffscreenCanvas 导致 Node/SSR 导入失败。实际启用 GIS 地图的浏览器仍需支持 `OffscreenCanvas`、`fetch`、`createImageBitmap`、`AbortSignal.any` 和 `AbortSignal.timeout`；启用 DEM 还需 `DecompressionStream`。构建会生成私有共享块与插件块（ESM/CJS 各自一套），它们随整个 `dist/` 分发，不作为公开子路径。不要只复制 `index.js` 或 `index.cjs`。
 
 ## 检查命令
 
@@ -42,7 +54,7 @@ three-tile/plugin 在启用地图时延迟导入，避免其 GeoJSON 初始化�
 | ---------------------- | ----------------------------------------------- |
 | `npm run build`        | Vite 构建 ESM/CJS/CSS，并复制公开声明           |
 | `npm run check`        | 格式检查与构建                                  |
-| `npm run format:check` | 检查 JavaScript、Vue、CSS、声明、脚本和配置格式 |
+| `npm run format:check` | 检查 JavaScript、Vue、CSS、声明、脚本、配置与 SVG 格式；SVG 显式使用 HTML 解析器 |
 | `npm run format`       | 格式化上述文件                                  |
 
 本项目检查只证明格式和 ESM/CJS/CSS 构建成功、公开声明已复制，不代表功能验收或严格 TypeScript 消费检查通过。公开 `.d.ts` 继续独立维护，运行源码使用 JavaScript。
@@ -61,32 +73,32 @@ npm run types:watch
 
 前者更新 JavaScript 与样式，后者将 `types/` 中的声明变化同步到 `dist/`。这些命令不启动网页。在外部 Vue 应用中使用 SDK 时，组件与样式始终通过公开包名导入。
 
-## 统一使用 bim-view-tool 验证
+## 消费应用验证
 
-所有功能开发完成后，使用同级 `D:/work/bim-view-tool` 项目作为唯一宿主验证入口。不要在 SDK 中新建临时消费项目、测试目录或浏览器夹具，除非用户另行要求。
+使用实际 Vue 应用，通过公开包入口与 `style.css` 消费构建后的 `dist/`，验证应用集成。开发环境的具体项目和验证约定见仓库中的 `AGENTS.md`，使用者无需采用维护者的本机目录或应用配置。
 
 1. 在 SDK 目录执行 `npm run check`。
-2. 在 `D:/work/bim-view-tool` 执行 `npm run check`，完成宿主格式检查、两端构建和真实 npm link 检查。宿主及隔离链接注册区必须指向当前 SDK，且通过包入口与 `style.css` 消费 `dist/`。
-3. 在宿主执行 `npm run dev`，使用其实际模型打开浏览器，验证加载、控制台和本次改动的交互。默认端口为 5173；有冲突时先设置 `BIM_HOST_PORT`。
+2. 本地联调可使用 `npm link`：先在 SDK 目录执行 `npm link`，再在消费应用目录执行 `npm link @caojinyu111/vue-bim-viewer`。核对链接实际指向当前 SDK，并统一 Vue、Three.js 的版本和实例。
+3. 执行消费应用自己的检查、生产构建和开发启动命令，使用实际模型打开浏览器，验证模型加载、地图、控制台及相关交互。
 4. 涉及布局时检查桌面与窄屏；按变更回归 Home、骰子、模型选择、Marker 和 GIS。宿主未启用的能力明确记录为未覆盖，不用合成夹具代替真实宿主验收。
 5. 验证结果随交付说明提供，不在 SDK 内累计临时报告、截图或安装包。构建与链接成功不能代替浏览器功能验证。
 
-日常验证保留真实 npm link。只有用户明确要求验收发布安装包时，才在同一宿主中安装指定 `.tgz` 验证，并在完成后恢复链接。不自动修改宿主业务配置或发布 npm。
+本地联调完成后保留 npm link。验收安装包时，在消费应用中安装指定 `.tgz`，直接运行应用构建和浏览器验证，完成后按需要恢复链接。不要用直接导入 SDK 源码的方式代替公开包入口验证。
 
-## 0.3.2 打包与发布
+## 0.3.3 打包与发布
 
-确认包配置与锁文件中的版本均为 `0.3.2`，然后执行：
+确认包配置与锁文件中的版本均为 `0.3.3`，然后执行：
 
 ```sh
 npm run check
 npm pack --dry-run
 ```
 
-`prepack` 只重新构建。发布白名单包括 `dist/`、`README.md`、`API.md`、`LICENSE`，npm 自动包含 `package.json`。发布工作流保留 `npm run check` 入口，该步骤只做格式检查与构建；功能验收在发布前通过 `bim-view-tool` 完成。
+`prepack` 只重新构建。发布白名单包括 `dist/`、`README.md`、`API.md`、`LICENSE`，npm 自动包含 `package.json`。发布工作流运行 `npm run check`，该步骤只做格式检查与构建；功能验收须在发布前通过实际消费应用完成。
 
 检查包文件列表：应仅包含完整 `dist/`、`README.md`、`API.md`、`LICENSE` 和 `package.json`。共享分块、动态插件分块及声明必须完整，源码、测试、开发指南、本机配置和验收记录不进入 npm 包。
 
-需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.3.2.tgz`，不在本项目保留历史安装包；安装包的实际消费验证仍使用 `bim-view-tool`。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
+需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.3.3.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
 
 使用具备包发布权限的 npm 账号发布已验证的安装包：
 

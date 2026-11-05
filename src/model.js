@@ -1,4 +1,4 @@
-import { Box3, Group, LoadingManager, Mesh, Texture, Vector3 } from 'three'
+import { Box3, Group, LoadingManager, Vector3 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
 /** scene 是 Loader 原始根；root 仅用于展示居中，offset 不写回模型节点数据。 */
@@ -33,11 +33,12 @@ export function disposeScene(root) {
   const textures = new Set()
   const images = new Set()
   root.traverse((node) => {
-    if (!(node instanceof Mesh)) return
+    if (node?.isMesh !== true) return
     geometries.add(node.geometry)
     for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
       allMaterials.add(material)
-      for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value)
+      for (const value of Object.values(material))
+        if (value?.isTexture === true) textures.add(value)
     }
   })
   geometries.forEach((geometry) => geometry.dispose())
@@ -199,7 +200,7 @@ export async function loadModel(source, signal, progress) {
     let meshes = 0,
       triangles = 0
     scene.traverse((node) => {
-      if (!(node instanceof Mesh)) return
+      if (node?.isMesh !== true) return
       meshes++
       triangles +=
         (node.geometry.index?.count ?? node.geometry.getAttribute('position')?.count ?? 0) / 3

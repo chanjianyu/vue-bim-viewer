@@ -164,8 +164,9 @@ export function createTerrainSource(plan, options, key, requests) {
         coords.forEach((coord, i) => {
           const height = sampleTerrain(data.get(coord.id), coord.u, coord.v)
           if (options.mode === 'absolute') {
+            let converted
             try {
-              heights[i] = options.toEllipsoidHeight({
+              converted = options.toEllipsoidHeight({
                 longitude: coord.longitude,
                 latitude: coord.latitude,
                 height,
@@ -173,7 +174,9 @@ export function createTerrainSource(plan, options, key, requests) {
             } catch {
               throw new Error('DEM 高程基准转换失败')
             }
-            if (!Number.isFinite(heights[i])) throw new Error('DEM 高程转换必须返回有限的椭球高')
+            if (typeof converted !== 'number' || !Number.isFinite(converted))
+              throw new Error('DEM 高程转换必须返回有限的椭球高')
+            heights[i] = converted
           } else heights[i] = height - base
         })
         return heights

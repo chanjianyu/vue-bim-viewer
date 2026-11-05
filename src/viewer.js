@@ -12,17 +12,17 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
+import { createSelection } from './selection.js'
 import { createCameraMotion } from './camera-motion.js'
 import { createCameraNavigation } from './navigation/camera-navigation.js'
 import { projectMarkers } from './markers.js'
 import { createImageryPlan } from './gis/projection.js'
 import { createImageryLayer } from './gis/layer.js'
 
-/** 一个 Viewer 管理自己的 GPU、相机、选择轮廓及可选影像层；不包含矿山业务数据。 */
+/** 一个 Viewer 管理自己的 GPU、相机、选择效果及可选影像层；不包含矿山业务数据。 */
 export function createViewer(
   container,
   onOverlay,
@@ -54,15 +54,11 @@ export function createViewer(
   fill.position.set(-4, 1, -2)
   scene.add(fill)
   const composer = new EffectComposer(renderer)
-  // 选择使用独立后处理轮廓，不改模型材质，也不进入外观差异记录。
   const renderPass = new RenderPass(scene, camera)
-  const outline = new OutlinePass(new Vector2(1, 1), scene, camera)
-  outline.visibleEdgeColor.set('#66d9c0')
-  outline.hiddenEdgeColor.set('#244f46')
-  outline.edgeStrength = 3
+  const selection = createSelection(scene, camera)
   const output = new OutputPass()
   composer.addPass(renderPass)
-  composer.addPass(outline)
+  composer.addPass(selection.pass)
   composer.addPass(output)
   let current, components, appearance
   let markers = [],
@@ -71,7 +67,6 @@ export function createViewer(
     frame = 0,
     destroyed = false
   let initialView = {}
-  let selected = null
   let imagery
   let imageryIdentity = ''
   let terrainHeightTransform
@@ -116,14 +111,10 @@ export function createViewer(
     }
     updateClip()
     imagery?.update(camera)
-    const visibleSelection =
-      selected &&
-      components &&
-      appearance &&
-      appearance.get(components.byObject.get(selected) || '')?.effective.visible
-    outline.selectedObjects = selected && visibleSelection ? [selected] : []
-    if (outline.selectedObjects.length) composer.render()
-    else renderer.render(scene, camera)
+    selection.render(components, appearance, (active) => {
+      if (active) composer.render()
+      else renderer.render(scene, camera)
+    })
     if (current && components && appearance)
       onOverlay(
         projectMarkers(markers, components, appearance, current.offset, camera, width, height),
@@ -201,8 +192,7 @@ export function createViewer(
       onGisStatus({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
       onTerrainStatus?.({ status: 'disabled', mode: 'relative', loaded: 0, failed: 0, total: 0 })
       current?.root.removeFromParent()
-      selected = null
-      outline.selectedObjects = []
+      selection.select(null)
       current = model
       components = index
       appearance = state
@@ -296,7 +286,7 @@ export function createViewer(
       invalidate()
     },
     select(object) {
-      selected = object
+      selection.select(object)
       invalidate()
     },
     focus(object, options) {
@@ -359,7 +349,7 @@ export function createViewer(
       controls.removeEventListener('start', motion.cancel)
       controls.dispose()
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
-      outline.dispose()
+      selection.dispose()
       output.dispose()
       composer.dispose()
       renderer.dispose()

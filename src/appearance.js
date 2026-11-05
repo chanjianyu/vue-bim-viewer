@@ -1,4 +1,3 @@
-import { Color, Mesh } from 'three'
 import { flattenComponentTree } from './components.js'
 import { isRecord } from './model.js'
 
@@ -19,9 +18,9 @@ export function createAppearance(components, onChange = () => {}) {
       opacity: 1,
       color: null,
     })
-    if (object instanceof Mesh) originalMaterials.set(object, object.material)
+    if (object?.isMesh === true) originalMaterials.set(object, object.material)
   }
-  /** 返回可持久化净差异快照，不暴露内部 Map，也不包含选择轮廓。 */
+  /** 返回可持久化净差异快照，不暴露内部 Map，也不包含临时选择效果。 */
   function changes() {
     return {
       schemaVersion: 1,
@@ -51,7 +50,7 @@ export function createAppearance(components, onChange = () => {}) {
       effective.set(node.id, value)
       const object = components.renderObjects.get(node.id)
       object.visible = value.visible
-      if (!(object instanceof Mesh)) continue
+      if (object?.isMesh !== true) continue
       const original = originalMaterials.get(object)
       if (value.opacity === 1 && value.color === null) {
         object.material = original
@@ -70,9 +69,9 @@ export function createAppearance(components, onChange = () => {}) {
         clone.depthWrite = clone.opacity < 1 ? false : material.depthWrite
         if (
           'color' in clone &&
-          clone.color instanceof Color &&
+          clone.color?.isColor === true &&
           'color' in material &&
-          material.color instanceof Color
+          material.color?.isColor === true
         ) {
           clone.color.copy(material.color)
           if (value.color) clone.color.set(value.color)
@@ -164,9 +163,14 @@ export function createAppearance(components, onChange = () => {}) {
     return apply(updates, 'import')
   }
   function restore(id) {
-    const ids = id === undefined ? [...own.keys()] : [id]
+    if (typeof id !== 'string' || !id.trim())
+      return { ...result(), error: 'restoreComponent 需要传入当前模型中的有效构件 ID' }
+    if (!components.byId.has(id)) return { ...result(), unknownIds: [id] }
+    return apply([{ id, patch: { visible: null, opacity: null, color: null } }], 'restore')
+  }
+  function restoreAll() {
     return apply(
-      ids.map((id) => ({ id, patch: { visible: null, opacity: null, color: null } })),
+      [...own.keys()].map((id) => ({ id, patch: { visible: null, opacity: null, color: null } })),
       'restore',
     )
   }
@@ -176,6 +180,7 @@ export function createAppearance(components, onChange = () => {}) {
     apply,
     importChanges,
     restore,
+    restoreAll,
     get(id) {
       const base = initial.get(id),
         value = effective.get(id)
