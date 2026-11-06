@@ -1,4 +1,51 @@
-import { Spherical } from 'three'
+import { Box3, Sphere, Spherical, Vector3 } from 'three'
+
+/** 原模型坐标转为展示目标；所有计算先完成，失败时不影响当前动画。 */
+export function createPointView(camera, controls, model, point, options = {}) {
+  if (!point || ![point.x, point.y, point.z].every(Number.isFinite)) return null
+  const duration = options.duration === undefined ? 800 : options.duration
+  const direction = camera.position.clone().sub(controls.target)
+  const currentDistance = direction.length()
+  const distance = options.distance === undefined ? currentDistance : options.distance
+  if (
+    !Number.isFinite(duration) ||
+    duration < 0 ||
+    !Number.isFinite(currentDistance) ||
+    currentDistance <= 0 ||
+    !Number.isFinite(distance) ||
+    distance <= 0
+  )
+    return null
+  const target = new Vector3(point.x, point.y, point.z).add(model.offset)
+  const position = target.clone().addScaledVector(direction.divideScalar(currentDistance), distance)
+  const sphere = new Box3().setFromObject(model.root, true).getBoundingSphere(new Sphere())
+  const near = Math.min(camera.near, distance / 100)
+  const far = Math.max(camera.far, distance * 2, position.distanceTo(sphere.center) + sphere.radius)
+  const minDistance = Math.min(controls.minDistance, distance)
+  const maxDistance = Math.max(controls.maxDistance, distance)
+  const actualDistance = position.distanceTo(target)
+  // 同时验证动画中间值，防止极端数值溢出或精度不足导致相机与目标重合。
+  if (
+    ![
+      ...target.toArray(),
+      ...position.toArray(),
+      near,
+      far,
+      minDistance,
+      maxDistance,
+      actualDistance,
+      far + camera.position.distanceTo(position),
+      controls.target.distanceTo(target),
+    ].every(Number.isFinite) ||
+    near <= 0 ||
+    far <= near ||
+    actualDistance <= near ||
+    minDistance < 0 ||
+    maxDistance < minDistance
+  )
+    return null
+  return { position, target, near, far, minDistance, maxDistance }
+}
 
 /** 只修改相机；帧调度、模型和输入事件仍由 Viewer 管理。 */
 export function createCameraMotion(camera, controls) {

@@ -24,6 +24,10 @@ export interface CameraTransitionOptions {
   /** 过渡时长，毫秒；默认 800，0 即时定位，必须为有限非负数。 */
   duration?: number
 }
+export interface FocusPointOptions extends CameraTransitionOptions {
+  /** 相机到目标点的距离，沿用模型单位；省略则保持调用时距离，必须为有限正数。 */
+  distance?: number
+}
 /** 普通静态背景图按容器居中 cover；加载期间或失败时显示纯色。 */
 export interface BackgroundOptions {
   /** #RRGGBB；省略或非法时使用 #f4f7fb。 */
@@ -191,6 +195,8 @@ export interface ViewerApi {
   selectComponent(id: string | null): boolean
   /** 平滑定位构件；空节点使用原点，未知 ID、未就绪或非法时长返回 false。 */
   focusComponent(id: string, options?: CameraTransitionOptions): boolean
+  /** 按原模型坐标聚焦并保持观察方向；无效参数或未就绪时返回 false，不打断有效动画。 */
+  focusPoint(point: Point3, options?: FocusPointOptions): boolean
   /** 按 initialView 平滑适配整个模型；未就绪或非法时长返回 false。 */
   resetView(options?: CameraTransitionOptions): boolean
   /** 切换六个标准方向，保持观察目标和距离；未就绪、非法方向或时长返回 false。 */

@@ -104,6 +104,8 @@ async function reload() {
       return
     }
     const index = createComponents([candidate.scene], candidate)
+    console.log('构件树', index.tree)
+    console.log('构件数组', [...index.byId.values()])
     candidateAppearance = createAppearance(index, (event) => {
       appearanceRevision.value++
       viewer?.refresh()
@@ -248,6 +250,14 @@ const api = {
     return object
       ? viewer?.focus(object, { ...props.cameraTransition, ...options }) || false
       : false
+  },
+  focusPoint: (point, options) => {
+    if (
+      options !== undefined &&
+      (!options || typeof options !== 'object' || Array.isArray(options))
+    )
+      return false
+    return viewer?.focusPoint(point, { ...props.cameraTransition, ...options }) || false
   },
   resetView: (options) => viewer?.reset({ ...props.cameraTransition, ...options }) || false,
   setViewDirection: (direction, options) =>

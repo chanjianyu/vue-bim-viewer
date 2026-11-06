@@ -496,6 +496,7 @@ function onBackgroundError(error) {
 | `restoreAllComponents()`                | 无                                      | `OperationResult`             | 删除所有自身覆盖；未就绪返回 `error`                                   |
 | `selectComponent(id)`                   | ID 或 `null`                            | `boolean`                     | 有效选择/清空成功为 `true`；未知 ID/未就绪为 `false`                   |
 | `focusComponent(id, options?)`          | ID；可选 `{ duration }`，毫秒           | `boolean`                     | 接受定位为 `true`；未知 ID/未就绪/非法时长为 `false`；不自动选择       |
+| `focusPoint(point, options?)`          | 原模型 `{ x, y, z }`；可选 `{ distance, duration }` | `boolean` | 保持观察方向，默认保持距离；无效参数或不可用时返回 `false`，不打断有效动画 |
 | `resetView(options?)`                   | 可选 `{ duration }`，毫秒               | `boolean`                     | 有模型时重置全模型视角；无模型/非法时长为 `false`                      |
 | `setViewDirection(direction, options?)` | 六个标准方向；可选 `{ duration }`，毫秒 | `boolean`                     | 保留观察目标与距离；未就绪、非法方向或时长返回 `false`，不打断有效动画 |
 | `reload()`                              | 无                                      | `Promise<void>`               | 取消前一轮加载；失败保留旧场景，通过事件报告结果                       |
@@ -573,6 +574,18 @@ function readAnchors(api, componentId) {
 ### 5.5 选择、定位与高级场景读取
 
 `selectComponent(id)` 设置选择效果并发出 `component-select`，不会自动移动相机；`focusComponent(id)` 调整视野但不会自动选择。空节点定位会围绕其原点给出局部视野。
+
+`focusPoint(point, options?)` 按原模型 XYZ 聚焦，坐标与 `type: 'model'` Marker 一致，无需加减展示居中偏移。目标点位于画面中心，并成为后续拖动旋转及骰子方向切换的观察中心。保持调用时的观察方向；不传 `distance` 时保持调用时相机到当前观察中心的距离，传入时使用指定距离，单位沿用模型。不会自动选择构件、创建 Marker 或修改外观。
+
+```js
+viewer.value.focusPoint({ x: 100, y: 20, z: -50 })
+viewer.value.focusPoint({ x: 100, y: 20, z: -50 }, { distance: 30, duration: 500 })
+viewer.value.focusPoint({ x: 0, y: 0, z: 0 }, { duration: 0 })
+```
+
+`FocusPointOptions` 继承 `CameraTransitionOptions`，新增可选 `distance`。XYZ 必须全部为有限数值，显式距离必须为有限正数，时长必须为有限非负数；派生相机参数无效、模型未就绪、销毁或图形上下文丢失时返回 `false`，保留当前有效动画。返回 `true` 仅表示接受操作。单次时长优先于组件 `cameraTransition`，默认 800ms；连续调用、用户操作中断和减少动态效果行为与构件定位一致。参数对象和输入点均不会被改写。
+
+允许聚焦模型内部及包围盒外的点，不吸附表面、不寻找无遮挡方向、不自动剖切；目标点可能被前方几何遮挡。缩放范围和裁剪面按需扩展以容纳指定距离及模型，GIS 沿用现有远裁剪补偿。Home 仍恢复全模型初始视角，选择、Marker 和弹窗沿用现有状态及可见性规则。
 
 选择样式由 SDK 内置：青绿色表面高亮与浅绿色细轮廓，保留纹理、明暗和原有透明度，遵循场景遮挡，不显示穿透轮廓、不闪烁，也不自动创建标签。选择父节点时作用于其可见且非完全透明的子网格；隐藏构件不显示高亮。三维点击、构件树调用及 API 选择使用同一效果，不提供样式修改或禁用参数。
 
@@ -1283,6 +1296,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `ModelSource`             | `{ manifestUrl }`                                                      | [加载](#model-loading)     |
 | `InitialView`             | `direction?`、`fitPadding?`                                            | [Props](#props)            |
 | `CameraTransitionOptions` | `duration?`：毫秒，默认 800，0 即时定位                                | [定位与视角](#viewer-api)  |
+| `FocusPointOptions`       | 继承相机过渡选项，增加 `distance?`，模型单位，省略保持当前距离            | [坐标定位](#viewer-api)    |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
 | `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
@@ -1301,7 +1315,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `SceneAssociation`        | 可选 `nodes` 源节点索引，Loader 关联辅助类型，无独立查询方法           | [场景读取](#viewer-api)    |
 | `NavigationOptions`       | `home?`、`cube?`、`componentTree?`，均默认 true                        | [导航](#navigation)        |
 | `ViewDirection`           | 六个标准观察方向                                                       | [导航](#navigation)        |
-| `ViewerApi`               | 组件 ref 暴露的 18 个方法                                              | [实例方法](#viewer-api)    |
+| `ViewerApi`               | 组件 ref 暴露的 19 个方法                                              | [实例方法](#viewer-api)    |
 | `GeographicCoordinate`    | `longitude`、`latitude`、`height?`                                     | [GIS](#gis)                |
 | `SurveyCoordinate`        | `northing`、`easting`、`height?`                                       | [GIS](#gis)                |
 | `GisControlPoint<T>`      | `{ model: Point3, map: T }`，T 默认 GeographicCoordinate               | [GIS](#gis)                |

@@ -16,7 +16,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
 import { createSelection } from './selection.js'
-import { createCameraMotion } from './camera-motion.js'
+import { createCameraMotion, createPointView } from './camera-motion.js'
 import { createCameraNavigation } from './navigation/camera-navigation.js'
 import { projectMarkers } from './markers.js'
 import { createImageryPlan } from './gis/projection.js'
@@ -291,6 +291,14 @@ export function createViewer(
     },
     focus(object, options) {
       return fit(object, false, options)
+    },
+    focusPoint(point, options) {
+      if (!current || destroyed || !contextAvailable) return false
+      const view = createPointView(camera, controls, current, point, options)
+      if (!view) return false
+      const accepted = motion.moveTo(view, options)
+      if (accepted) invalidate()
+      return accepted
     },
     reset(options) {
       return current && !destroyed && contextAvailable ? fit(current.root, true, options) : false
