@@ -36,7 +36,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 场景查询   | 源场景结构快照、活的 Three.js 根节点、对象对应 ID               | `getSceneTree()` 等                              |
 | 构件交互   | 三维拾取、按 ID 选择、青绿色高亮与细轮廓、相机定位、清除选择    | `selectComponent()`、`focusComponent()`          |
 | 锚点查询   | 对象原点、包围盒中心、包围盒 Y 轴顶部                           | `getComponentAnchor()`                           |
-| 外观控制   | 显隐、透明度、颜色、批量设置及父子继承                          | `setComponentAppearance()` 等                    |
+| 外观控制   | 显隐、两档透明、颜色、批量设置及状态同步                          | `setComponentAppearance()` 等                    |
 | 差异与恢复 | 当前净差异、合并导入、恢复单节点或全部覆盖                      | `getAppearanceChanges()` 等                      |
 | 标签       | 原始模型坐标点、构件锚点、模型偏移、屏幕偏移                    | `markers`                                        |
 | 弹窗与模板 | 默认标签/弹窗、自定义插槽、点击切换和关闭                       | `marker`、`marker-popup`                         |
@@ -375,6 +375,8 @@ const navigation = reactive({ home: true, cube: true, componentTree: true })
 
 标题文字及空白处显示四向移动光标，按住可用鼠标或触屏拖动面板；关闭按钮显示手形光标，不启动拖动。面板限制在场景内，四周保留 16px；打开和场景尺寸变化时自动修正并保存越界位置。关闭后按钮恢复原位，再次打开保留关闭前的位置。同一组件实例内，关闭、配置隐藏及模型重载均保留位置；重新挂载或刷新页面后恢复初始位置，不使用本地存储。搜索框和列表不作为拖动区域，拖动不触发模型旋转、平移或拾取。
 
+目录正方体是独立透明按钮，操作规则见 [外观字段与分支状态](#appearance)。关闭、重开目录或配置隐藏保留当前外观；成功重载模型后 SDK 状态重置，加载失败保留当前状态。宿主随后回放的外观同步到目录，SDK 不使用本地存储。
+
 目录搜索忽略名称大小写，保留匹配节点与祖先路径并自动展开；清除搜索恢复普通浏览的展开状态。搜索只过滤目录，不改变场景或复选框的操作范围。分支复选框按完整子树的几何体有效显隐显示全选、半选或未选，与颜色、透明度无关；没有几何后代的分支禁用复选框。取消勾选隐藏整组，勾选显示整组及此前单独隐藏的后代。单独显示隐藏祖先下的子构件会开启必要祖先，保留其他分支的隐藏状态。一次操作批量写入现有外观状态，沿用 `appearance-change`（`source: 'api'`）及外观保存、导入和恢复机制。
 
 点击名称组合执行选择与定位：沿当前观察方向适配该分支的包围盒，沿用 `cameraTransition`，不自动寻找无遮挡方向。隐藏构件保持隐藏，只更新选择并定位；没有可定位几何时只选择并显示提示，相机不移动。公开 `selectComponent()` 和 `focusComponent()` 各自的行为保持独立。
@@ -490,7 +492,7 @@ function onBackgroundError(error) {
 | `setComponentAppearances(updates)`      | `{ id, patch }[]`                       | `OperationResult`             | 有效项应用，非法项跳过；不是整批回滚                                   |
 | `getAppearanceChanges()`                | 无                                      | `AppearanceChangeSet \| null` | 未就绪为 `null`；就绪但无修改时 `overrides: []`                        |
 | `applyAppearanceChanges(value)`         | 已解析的差异对象，不是 JSON 字符串      | `OperationResult`             | 格式、版本、字段校验失败时不应用；未知 ID 单独报告                     |
-| `restoreComponent(id)`                  | 当前模型中的构件 ID                     | `OperationResult`             | 只取消该节点自身覆盖；无效 ID 返回错误或 `unknownIds`，不修改外观       |
+| `restoreComponent(id)`                  | 当前模型中的构件 ID                     | `OperationResult`             | 整组恢复不透明，颜色和显隐只恢复自身；无效 ID 不修改外观       |
 | `restoreAllComponents()`                | 无                                      | `OperationResult`             | 删除所有自身覆盖；未就绪返回 `error`                                   |
 | `selectComponent(id)`                   | ID 或 `null`                            | `boolean`                     | 有效选择/清空成功为 `true`；未知 ID/未就绪为 `false`                   |
 | `focusComponent(id, options?)`          | ID；可选 `{ duration }`，毫秒           | `boolean`                     | 接受定位为 `true`；未知 ID/未就绪/非法时长为 `false`；不自动选择       |
@@ -599,7 +601,7 @@ function inspectScene(api) {
 }
 ```
 
-三维点击可以选择构件，点击空白清除选择；拖动旋转与点击通过移动距离区分。隐藏或外观有效透明度为 0 的构件不参与当前拾取过滤。
+三维点击可以选择构件，点击空白清除选择；拖动旋转与点击通过移动距离区分。隐藏或命中源材质不可见、不透明度为 0 的构件不参与拾取。
 
 `getSceneRoot()` 返回活的 Three.js 对象，仍处于 SDK 的展示层级内。它用于只读查询，不能直接重设父节点、变换、几何或材质，也不应放入深度响应式状态或持久化为 JSON。绕过公开方法修改可能破坏构件包围盒、标签、选择和外观状态的一致性，且没有对应的公开刷新接口。
 
@@ -607,21 +609,23 @@ function inspectScene(api) {
 
 ## 6. 外观修改、差异与保存
 
-### 6.1 外观字段与继承
+### 6.1 外观字段与分支状态
 
 `AppearancePatch` 至少包含一个已知字段，不支持任意材质属性：
 
-| 字段      | 有效输入                  | 含义                                                    |
-| --------- | ------------------------- | ------------------------------------------------------- |
-| `visible` | `boolean` 或 `null`       | 控制节点显隐；祖先隐藏会继续隐藏后代                    |
-| `opacity` | 有限数值 `0..1` 或 `null` | 相对原始材质的透明度倍率，不是直接读取/覆盖材质原透明度 |
-| `color`   | `#RRGGBB` 或 `null`       | 颜色覆盖；输出统一为小写十六进制                        |
+| 字段 | 有效输入 | 含义 |
+| --- | --- | --- |
+| `visible` | `boolean` 或 `null` | 设置节点自身显隐覆盖；祖先隐藏继续隐藏后代 |
+| `translucent` | `boolean` 或 `null` | 设置自身及全部后代几何体；true 为半透明，false/null 为不透明 |
+| `color` | `#RRGGBB` 或 `null` | 设置自身颜色覆盖；输出统一为小写十六进制 |
 
-省略字段表示不修改它；`null` 表示取消该字段自身覆盖，恢复初始值/继承关系。`undefined` 不能代替 `null` 放在 patch 中。空对象、未知字段、非法颜色和超范围透明度都会被报告为跳过。
+省略字段表示不修改；visible/color 的 null 删除自身覆盖，translucent 的 null 将整组恢复为初始不透明。undefined、数值 opacity、非布尔 translucent、空对象、未知字段及非法颜色均报告为跳过，该项不部分应用。
 
-`getComponentAppearance(id)` 返回独立快照：`own` 是自身覆盖，`initial` 是逻辑初始状态，`effective` 是计算祖先影响后的有效状态。初始透明度倍率为 1、颜色覆盖为 `null`，不表示模型原始材质完全不透明或没有颜色。
+半透明使用原材质不透明度的 50% 倍率，不透明使用 100% 倍率，保留模型材质自带透明效果。透明状态不沿祖先继承，也不逐级相乘；父级操作一次性写入全部几何后代，此后各子分支独立改变。显隐沿祖先继承，颜色使用最近有效覆盖，无覆盖时保留原材质颜色。visible: true 不能强行显示隐藏祖先下的构件。
 
-继承规则：祖先显隐和自身显隐共同决定最终显隐；透明度倍率沿父子相乘后再乘原材质透明度；颜色采用最近的有效覆盖，没有覆盖时保留原材质颜色。子节点恢复初始值后仍受祖先影响，不能用 `visible: true` 强行显示已被祖先隐藏的节点。
+getComponentAppearance(id) 返回独立快照：own 是自身覆盖，纯分组不保存 translucent；initial.translucent 为 false、initial.color 为 null；effective.visible/color 包含继承，而 effective.translucent 表示完整分支（包含自身几何体、隐藏几何体）是否全部半透明。混合或空分支返回 false。网格渲染使用自身状态，父级汇总不改变自身材质。
+
+目录正方体与宿主读取同一份 effective.translucent，无独立点击缓存。全部半透明显示空心，点击整组不透明；全部不透明或混合显示灰色实心，点击整组半透明。空分支按钮禁用，搜索和折叠不改变统计或操作范围。正方体操作不改变显隐、颜色、选择或相机。
 
 ### 6.2 单项、批量修改和恢复
 
@@ -632,7 +636,7 @@ function updateAppearance(api, componentId) {
   }
   const result = api.setComponentAppearance(componentId, {
     visible: true,
-    opacity: 0.5,
+    translucent: true,
     color: '#3388ff',
   })
   if (result.error) console.error(result.error)
@@ -642,14 +646,14 @@ function updateAppearance(api, componentId) {
 }
 
 function updateMany(api, componentIds) {
-  return api.setComponentAppearances(componentIds.map((id) => ({ id, patch: { opacity: 0.3 } })))
+  return api.setComponentAppearances(componentIds.map((id) => ({ id, patch: { translucent: true } })))
 }
 
 function restoreAppearance(api, componentId) {
   if (typeof componentId !== 'string' || !componentId.trim() || !api.getComponent(componentId)) {
     throw new Error('恢复前必须检查当前模型中的构件 ID')
   }
-  return api.restoreComponent(componentId) // 只取消该节点全部自身覆盖
+  return api.restoreComponent(componentId) // 整组恢复不透明，显隐和颜色仅恢复此节点自身
 }
 
 function restoreEverything(api) {
@@ -659,7 +663,7 @@ function restoreEverything(api) {
 
 **调用约束：`restoreComponent` 必须传入当前模型中的有效构件 ID。漏传参数、传入 `undefined`、`null` 或空字符串会返回 `error`，不会修改任何外观；格式正确但不存在的 ID 会进入 `unknownIds`。需要恢复全部覆盖时，必须显式调用 `restoreAllComponents()`。**
 
-`restoreComponent(id)` 在传入有效 ID 时不递归删除后代独立覆盖；需要全部恢复时使用 `restoreAllComponents()`。重复设置相同值或设置回逻辑初值可能不会产生新的差异。
+`restoreComponent(id)` 将完整分支恢复不透明，只删除目标节点的颜色和显隐覆盖，后代独立颜色和显隐继续保留。`restoreAllComponents()` 恢复全部外观。批量操作按输入顺序执行，重叠分支以后者为准；批末没有净变化时不触发事件。
 
 ### 6.3 OperationResult 和事件
 
@@ -675,12 +679,12 @@ function restoreEverything(api) {
 
 | 字段         | 说明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
-| `changedIds` | 本次操作中自身覆盖发生变化的 ID，去重后返回；不展开列出受父级影响的所有后代 |
+| `changedIds` | 批末自身覆盖实际变化的 ID；透明整组操作包含实际变化的几何后代，祖先汇总不单列 |
 | `unknownIds` | 当前模型找不到的 ID                                                         |
 | `skipped`    | `{ id, reason }[]`，字段无效或修改项结构不合法等                            |
 | `error`      | 操作级错误，例如模型未就绪、批量输入不是数组或导入格式不合法                |
 
-不要只检查 `error`：有些操作会部分成功，需要同时检查 `unknownIds` 和 `skipped`。普通批量更新跳过非法项，仍应用有效项。当前仅在自身覆盖实际变化时发出 `appearance-change`，无变化的调用不会强制发事件。
+不要只检查 `error`：有些操作会部分成功，需要同时检查 `unknownIds` 和 `skipped`。普通批量更新跳过非法项，仍应用有效项。一次批量操作最多发出一次 `appearance-change`，只有批末自身覆盖有净变化时发出。目录和宿主在同一事件中刷新祖先汇总。
 
 ### 6.4 净差异、导出与导入规则
 
@@ -688,14 +692,14 @@ function restoreEverything(api) {
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "modelId": "mine-model",
   "revision": "resource-example",
   "overrides": [
     {
       "id": "shaft-auxiliary",
-      "original": { "opacity": 1 },
-      "current": { "opacity": 0.5 }
+      "original": { "translucent": false },
+      "current": { "translucent": true }
     }
   ]
 }
@@ -703,7 +707,7 @@ function restoreEverything(api) {
 
 实际 `modelId`、`revision` 和 ID 应来自 SDK，不能照抄示例值。`original` 用于描述被修改字段的逻辑初值；导入使用 `current` 应用修改，不把 `original` 当作回滚命令，也不把选择轮廓写入记录。
 
-`applyAppearanceChanges(value)` 先检查结构、`schemaVersion`、模型身份、资源版本及全部 `current` 字段。此阶段失败时不应用任何修改；校验通过后合并覆盖，未列出的现有修改保留。未知 ID 在应用阶段进入 `unknownIds`，其他有效项仍会生效。
+`applyAppearanceChanges(value)` 接收 schemaVersion: 2，先完整校验模型身份、资源版本和全部字段，再精确合并每个节点的 current 覆盖。导入透明字段不扩展为整组操作，保留父子独立状态；纯分组不能保存自身透明覆盖，未列出的覆盖保持不变。未知 ID 进入 unknownIds，其他有效项继续生效。schemaVersion: 1 或任意 original/current 含数值 opacity 的整份记录静默忽略：返回空操作结果，不修改场景、不发事件、不提示，也不迁移或删除记录。新格式的其他无效数据返回错误，不部分应用。构件树本身保持 schemaVersion: 1。
 
 传入空 `overrides` 不会清空已有修改。需要回到初始状态时调用恢复方法，不要把合并导入当作全量替换。
 
@@ -724,7 +728,7 @@ const restoring = ref(false)
 const source = { manifestUrl: '/models/manifest.json' }
 
 function storageKey() {
-  return tree.value ? `bim-appearance:${tree.value.modelId}:${tree.value.revision}` : null
+  return tree.value ? `bim-appearance:v2:${tree.value.modelId}:${tree.value.revision}` : null
 }
 
 function report(result) {
@@ -763,7 +767,7 @@ function onReady(value) {
 
 function changeFirst() {
   const first = flattenComponentTree(tree.value).find((node) => node.hasGeometry)
-  if (first && viewer.value) report(viewer.value.setComponentAppearance(first.id, { opacity: 0.5 }))
+  if (first && viewer.value) report(viewer.value.setComponentAppearance(first.id, { translucent: true }))
 }
 
 function restoreAll() {
@@ -883,7 +887,7 @@ function onMarkerClick(marker) {
 
 宿主通过更新 `markers` 控制标签，SDK 不替宿主持久化或编辑点位。若使用 `shallowRef([])` 保存列表，应替换数组，避免只修改未被深度响应式跟踪的内部数据。
 
-构件标签在绑定构件的 `effective.visible` 为 `false` 时隐藏；仅将透明度改为 0 不会自动隐藏标签。独立模型坐标标签不绑定构件显隐。相机背面、裁剪面之外和视口外的标签不显示。
+构件标签在绑定构件的 `effective.visible` 为 `false` 时隐藏；切换半透明不隐藏标签。独立模型坐标标签不绑定构件显隐。相机背面、裁剪面之外和视口外的标签不显示。
 
 点击标签打开或切换弹窗，再次点击同一标签关闭。自定义弹窗调用 `close()` 关闭；Escape 键事件到达 Viewer 时也会关闭。标签移除、隐藏或离开有效视口后，活动弹窗会关闭。`marker` 插槽的 `selected` 表示该标签的弹窗是否活动，不是模型构件是否被选中。
 
@@ -1280,7 +1284,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `InitialView`             | `direction?`、`fitPadding?`                                            | [Props](#props)            |
 | `CameraTransitionOptions` | `duration?`：毫秒，默认 800，0 即时定位                                | [定位与视角](#viewer-api)  |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
-| `Appearance`              | 有效显隐、透明度倍率、颜色覆盖                                         | [外观](#appearance)        |
+| `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
 | `AppearanceState`         | `own`、`effective`、`initial`                                          | [外观](#appearance)        |
 | `ComponentNode`           | ID、源名称、结构、包围盒和元数据                                       | [构件查询](#viewer-api)    |
@@ -1358,11 +1362,11 @@ const {
 | await reload 后没有新模型     | 查看 model-loaded/model-error；Promise 完成不保证加载成功，失败可能仍显示旧模型    |
 | 调 API 提示未知 ID            | ID 是否来自当前模型和 revision；不要用名称直接代替 ID                              |
 | 子节点设为可见仍不显示        | 祖先是否隐藏，或是否仍受初始状态/祖先外观影响                                      |
-| 恢复父节点后子节点仍有颜色    | restoreComponent 只恢复自身，后代独立覆盖仍保留                                    |
+| 恢复父节点后子节点仍有颜色    | restoreComponent 的颜色与显隐仅恢复自身，后代独立颜色继续保留                                    |
 | 导入记录未全量替换            | 导入是合并；空 overrides 不清空；检查 error、unknownIds 和 skipped                 |
 | 标签不显示                    | ID 是否唯一、锚点是否存在、绑定构件是否隐藏、位置是否有限、是否在相机前和视口内    |
 | 标签在物体后面仍显示          | 当前不做几何遮挡检测                                                               |
-| 模型透明后标签仍显示          | 标签绑定 effective.visible，不按 opacity=0 自动隐藏                                |
+| 模型透明后标签仍显示          | 标签绑定 effective.visible，半透明状态不隐藏标签                                |
 | 标签点与 GIS 控制点错位       | 是否误把对象原点、包围盒顶部或展示居中坐标当作真实测量点                           |
 | bounds-top 不在预期顶部       | 当前固定取 Y 最大值，Z 向上模型需自行选择真实点位                                  |
 | GIS 偏移很大或方向错误        | CRS、测量 X/Y 轴序、41 带号、模型竖直轴、单位、对应点是否一致                      |

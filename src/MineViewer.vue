@@ -372,6 +372,7 @@ onBeforeUnmount(() => {
       :loading="loading"
       @select="selectFromDirectory"
       @visibility="setDirectoryVisibility"
+      @translucency="({ id, translucent }) => api.setComponentAppearance(id, { translucent })"
     />
     <a
       v-if="gis?.enabled && gisStatus.loaded"

@@ -33,17 +33,20 @@ export interface BackgroundOptions {
 }
 export interface Appearance {
   visible: boolean
-  opacity: number
+  /** 半透明固定为原材质不透明度的 50%；false 保留原材质。 */
+  translucent: boolean
   color: string | null
 }
-/** null 撤销自身覆盖并恢复继承；原始材质透明度仍由渲染层保留。 */
+/** visible/color 设置自身覆盖；translucent 设置完整分支，null 恢复分支不透明。 */
 export interface AppearancePatch {
   visible?: boolean | null
-  opacity?: number | null
+  translucent?: boolean | null
   color?: string | null
 }
 export interface AppearanceState {
+  /** 节点自身覆盖；纯分组不保存 translucent。 */
   own: AppearancePatch
+  /** translucent 表示完整几何分支全部半透明；混合或空分支为 false。 */
   effective: Appearance
   initial: Appearance
 }
@@ -74,9 +77,9 @@ export interface AppearanceChange {
   original: AppearancePatch
   current: AppearancePatch
 }
-/** 只记录节点自身的净覆盖差异；父级影响不展开为每个后代的重复记录。 */
+/** 精确记录节点自身覆盖；几何节点各自保存 translucent，不保存分组汇总状态。 */
 export interface AppearanceChangeSet {
-  schemaVersion: 1
+  schemaVersion: 2
   modelId: string
   revision: string
   overrides: AppearanceChange[]
@@ -170,17 +173,17 @@ export interface ViewerApi {
   getComponent(id: string): ComponentNode | null
   /** 按 ID 取源模型空间锚点，单位沿用模型；默认对象原点；无几何不能查询包围盒锚点。 */
   getComponentAnchor(id: string, anchor?: Anchor): Point3 | null
-  /** own 为自身覆盖，effective 包含父级继承，initial 为逻辑初始状态。 */
+  /** own 为自身覆盖；effective 的显隐/颜色含继承，translucent 为完整分支汇总。 */
   getComponentAppearance(id: string): AppearanceState | null
-  /** opacity 为 0–1 倍率，color 为 #RRGGBB；null 删除对应覆盖。 */
+  /** translucent 设置整组两档状态；color 为 #RRGGBB，visible/color 的 null 删除自身覆盖。 */
   setComponentAppearance(id: string, patch: AppearancePatch): OperationResult
-  /** 批量设置；非法项跳过，有效项仍应用，结果分别列出。 */
+  /** 按顺序批量设置，重叠分支以后者为准；非法项跳过，批末最多一次变更事件。 */
   setComponentAppearances(updates: AppearanceUpdate[]): OperationResult
   /** 相对初始状态的净差异；原始材质颜色以 null 表示，不合并临时选择高亮。 */
   getAppearanceChanges(): AppearanceChangeSet | null
-  /** 合并导入；先检查模型身份、资源版本与所有字段，失败时不产生部分修改。 */
+  /** schemaVersion 2 精确合并自身覆盖；旧格式/含数值 opacity 的记录静默忽略。其他无效记录不部分应用。 */
   applyAppearanceChanges(value: unknown): OperationResult
-  /** 仅恢复该节点自身覆盖，后代独立覆盖保留；漏传或空 ID 返回 error，未知 ID 返回 unknownIds，均不修改外观。 */
+  /** 恢复整组不透明，仅删除本节点颜色和显隐覆盖；漏传/空 ID 返回 error，未知 ID 返回 unknownIds。 */
   restoreComponent(id: string): OperationResult
   /** 删除全部自身覆盖，回到模型初始外观。 */
   restoreAllComponents(): OperationResult

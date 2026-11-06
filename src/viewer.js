@@ -328,10 +328,15 @@ export function createViewer(
       return (
         ray.intersectObject(current.root, true).find((hit) => {
           const id = components?.byObject.get(hit.object)
+          const materials = hit.object.material
+          const material = Array.isArray(materials)
+            ? materials[hit.face?.materialIndex ?? 0]
+            : materials
           return (
             id &&
             appearance?.get(id)?.effective.visible &&
-            (appearance.get(id)?.effective.opacity || 0) > 0
+            material?.visible &&
+            material.opacity > 0
           )
         })?.object || null
       )

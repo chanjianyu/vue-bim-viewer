@@ -6,6 +6,7 @@ import closeIcon from '../assets/svg/close.svg?raw'
 import searchIcon from '../assets/svg/search.svg?raw'
 import chevronRightIcon from '../assets/svg/chevron-right.svg?raw'
 import componentIcon from '../assets/svg/component.svg?raw'
+import componentSolidIcon from '../assets/svg/component-solid.svg?raw'
 import { indexTree, searchTree, visibilityStates, visibleRows } from './tree-state.js'
 
 const props = defineProps({
@@ -17,7 +18,7 @@ const props = defineProps({
   getAppearance: { type: Function, required: true },
   loading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['select', 'visibility'])
+const emit = defineEmits(['select', 'visibility', 'translucency'])
 const panelId = useId()
 const open = ref(false),
   query = ref('')
@@ -39,6 +40,15 @@ const rows = computed(() => visibleRows(index.value, currentExpanded.value, sear
 const visibility = computed(() => {
   void props.appearanceRevision
   return visibilityStates(index.value, props.getAppearance)
+})
+const translucent = computed(() => {
+  void props.appearanceRevision
+  return new Map(
+    index.value.nodes.map((node) => [
+      node.id,
+      props.getAppearance(node.id)?.effective.translucent === true,
+    ]),
+  )
 })
 const selected = computed(() => index.value.byId.get(props.selectedId))
 const message = computed(() => {
@@ -184,6 +194,10 @@ function toggleVisibility(id) {
   const state = visibility.value.get(id)
   if (state?.total) emit('visibility', { id, visible: !state.checked })
 }
+function toggleTranslucency(id) {
+  if (visibility.value.get(id)?.total)
+    emit('translucency', { id, translucent: !translucent.value.get(id) })
+}
 </script>
 
 <template>
@@ -299,12 +313,28 @@ function toggleVisibility(id) {
             />
           </label>
           <button
+            class="mv-tree-translucency"
+            type="button"
+            :aria-label="`${translucent.get(row.node.id) ? '设为不透明' : '设为半透明'} ${row.node.name}`"
+            :title="
+              visibility.get(row.node.id).total
+                ? translucent.get(row.node.id)
+                  ? '设为不透明'
+                  : '设为半透明'
+                : '没有可显示几何体'
+            "
+            :aria-pressed="translucent.get(row.node.id)"
+            :disabled="!visibility.get(row.node.id).total"
+            @click="toggleTranslucency(row.node.id)"
+          >
+            <SvgIcon :source="translucent.get(row.node.id) ? componentIcon : componentSolidIcon" />
+          </button>
+          <button
             class="mv-tree-name"
             type="button"
             :title="row.node.name"
             @click="select(row.node.id)"
           >
-            <SvgIcon :source="componentIcon" />
             <span class="mv-tree-label">{{ row.node.name }}</span>
           </button>
         </div>
@@ -528,7 +558,26 @@ function toggleVisibility(id) {
   background: transparent;
   text-align: left;
 }
-.mv-tree-name .mv-svg-icon {
+.mv-tree-translucency {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 40px;
+  padding: 4px;
+  background: transparent;
+}
+.mv-tree-translucency:hover:not(:disabled) {
+  background: #475254;
+}
+.mv-tree-translucency:active:not(:disabled) {
+  background: #314b46;
+}
+.mv-tree-translucency:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.mv-tree-translucency .mv-svg-icon {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -557,6 +606,7 @@ function toggleVisibility(id) {
   }
   .mv-tree-expand,
   .mv-tree-spacer,
+  .mv-tree-translucency,
   .mv-tree-check {
     height: 44px;
   }
@@ -566,6 +616,7 @@ function toggleVisibility(id) {
     font-size: 16px;
   }
   .mv-tree-row,
+  .mv-tree-translucency,
   .mv-tree-check {
     min-height: 44px;
   }

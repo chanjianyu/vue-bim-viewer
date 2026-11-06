@@ -79,11 +79,7 @@ export function createSelection(scene, camera) {
           if (!mesh.isMesh) return
           const state = appearance.get(components.byObject.get(mesh) || '')?.effective
           const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-          if (
-            state?.visible &&
-            state.opacity > 0 &&
-            source.some((material) => material.visible && material.opacity > 0)
-          )
+          if (state?.visible && source.some((material) => material.visible && material.opacity > 0))
             meshes.push(mesh)
         })
       pass.selectedObjects = meshes
