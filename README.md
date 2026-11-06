@@ -1,6 +1,6 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.3.3**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.3.4**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
@@ -24,7 +24,7 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.3
+npm install @caojinyu111/vue-bim-viewer@0.3.4
 ```
 
 Vue **3.5.43** 和 Three.js **0.183.1** 是精确版本的共享 peerDependencies；npm 7+ 在宿主未安装时会自动补齐，保持单实例。three-tile **0.12.2** 与 GIS 投影依赖随 SDK 安装，three-tile 随 SDK 构建。
