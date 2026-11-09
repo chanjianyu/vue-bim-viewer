@@ -1,4 +1,58 @@
 import { Box3, Sphere, Spherical, Vector3 } from 'three'
+import { createMarkerClustering } from './marker-clustering.js'
+import { projectMarkerPosition } from './markers.js'
+
+/** 聚合点击先在克隆相机预测；不可拆分时由界面列出成员，不反复盲目放大。 */
+export function createClusterView(
+  camera,
+  controls,
+  model,
+  members,
+  radius,
+  width,
+  height,
+  options = {},
+) {
+  if (members.length < 2 || width <= 0 || height <= 0) return null
+  const box = new Box3()
+  for (const marker of members) {
+    const point = marker.modelPosition
+    if (!point || ![point.x, point.y, point.z].every(Number.isFinite)) return null
+    box.expandByPoint(new Vector3(point.x, point.y, point.z))
+  }
+  const sphere = box.getBoundingSphere(new Sphere())
+  const currentDistance = camera.position.distanceTo(controls.target)
+  const halfFov = Math.min(
+    (camera.getEffectiveFOV() * Math.PI) / 360,
+    Math.atan(Math.tan((camera.getEffectiveFOV() * Math.PI) / 360) * camera.aspect),
+  )
+  const distance = Math.max((1.2 * sphere.radius) / Math.sin(halfFov), currentDistance / 2)
+  if (sphere.radius <= 0 || !Number.isFinite(distance) || distance > currentDistance * 0.9)
+    return null
+  const view = createPointView(camera, controls, model, sphere.center, { ...options, distance })
+  if (!view) return null
+  const predictedCamera = camera.clone()
+  predictedCamera.position.copy(view.position)
+  predictedCamera.lookAt(view.target)
+  predictedCamera.near = view.near
+  predictedCamera.far = view.far
+  predictedCamera.updateProjectionMatrix()
+  predictedCamera.updateMatrixWorld(true)
+  const projected = members.map((marker) => ({
+    ...marker,
+    ...projectMarkerPosition(
+      marker.modelPosition,
+      marker.screenOffset,
+      model.offset,
+      predictedCamera,
+      width,
+      height,
+    ),
+  }))
+  if (projected.some((marker) => !marker.visible)) return null
+  const result = createMarkerClustering().update(projected, { enabled: true, radius })
+  return result.singles.length + result.clusters.length >= 2 ? view : null
+}
 
 /** 原模型坐标转为展示目标；所有计算先完成，失败时不影响当前动画。 */
 export function createPointView(camera, controls, model, point, options = {}) {
@@ -56,6 +110,7 @@ export function createCameraMotion(camera, controls) {
     camera.far = view.far
     controls.minDistance = view.minDistance
     controls.maxDistance = view.maxDistance
+    if (view.up) camera.up.copy(view.up).normalize()
     camera.updateProjectionMatrix()
   }
 
@@ -65,17 +120,21 @@ export function createCameraMotion(camera, controls) {
     const distance = camera.position.distanceTo(controls.target)
     controls.minDistance = Math.min(flight.view.minDistance, distance)
     controls.maxDistance = Math.max(flight.view.maxDistance, distance)
+    const onCancel = flight.hooks?.onCancel
     flight = undefined
+    onCancel?.()
   }
 
   return {
     cancel,
-    moveTo(view, options = {}) {
+    moveTo(view, options = {}, hooks = {}) {
       const duration = options.duration ?? 800
       if (!Number.isFinite(duration) || duration < 0) return false
       cancel()
       const from = camera.position.clone(),
-        target = controls.target.clone()
+        target = controls.target.clone(),
+        fromUp = camera.up.clone().normalize(),
+        targetUp = view.up ? view.up.clone().normalize() : fromUp.clone()
       // 清除拖动阻尼残量后恢复当前姿态，避免旧惯性干扰新的过渡。
       const damping = controls.enableDamping
       controls.enableDamping = false
@@ -100,6 +159,7 @@ export function createCameraMotion(camera, controls) {
         applyLimits(view)
         controls.update()
         controls.saveState()
+        hooks.onComplete?.()
       } else {
         const start = new Spherical().setFromVector3(from.clone().sub(target))
         const end = new Spherical().setFromVector3(view.position.clone().sub(view.target))
@@ -107,7 +167,17 @@ export function createCameraMotion(camera, controls) {
         end.theta =
           start.theta +
           Math.atan2(Math.sin(end.theta - start.theta), Math.cos(end.theta - start.theta))
-        flight = { from: start, to: end, target, view, started: performance.now(), duration }
+        flight = {
+          from: start,
+          to: end,
+          target,
+          fromUp,
+          targetUp,
+          view,
+          started: performance.now(),
+          duration,
+          hooks,
+        }
       }
       return true
     },
@@ -124,12 +194,15 @@ export function createCameraMotion(camera, controls) {
         from.theta + (to.theta - from.theta) * eased,
       )
       camera.position.setFromSpherical(offset).add(controls.target)
+      camera.up.lerpVectors(flight.fromUp, flight.targetUp, eased).normalize()
       if (t === 1) {
+        const onComplete = flight.hooks?.onComplete
         camera.position.copy(flight.view.position)
         applyLimits(flight.view)
         flight = undefined
         controls.update()
         controls.saveState()
+        onComplete?.()
       }
       return Boolean(flight)
     },

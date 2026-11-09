@@ -8,11 +8,14 @@ import CameraNavigation from './navigation/CameraNavigation.vue'
 import { resolveNavigation } from './navigation/view-cube.js'
 import ComponentTreePanel from './component-tree/ComponentTreePanel.vue'
 import { indexTree, visibilityUpdates } from './component-tree/tree-state.js'
+import MarkerClusters from './MarkerClusters.vue'
+import { createMarkerClustering, resolveMarkerClustering } from './marker-clustering.js'
 
 const props = defineProps({
   modelSource: { type: Object, required: true },
   markers: { type: Array, default: () => [] },
-  initialView: { type: Object, default: () => ({}) },
+  markerClustering: { type: Object },
+  initialView: { type: Object },
   cameraTransition: { type: Object },
   gis: { type: Object },
   background: { type: Object },
@@ -25,6 +28,7 @@ const emit = defineEmits([
   'component-select',
   'appearance-change',
   'marker-click',
+  'marker-cluster-click',
   'gis-status',
   'terrain-status',
   'background-error',
@@ -43,6 +47,37 @@ const loading = ref(false),
   activeMarkerId = ref(null)
 // Three 实例留在普通变量中；Vue 只响应快照、加载状态与标签布局。
 const overlay = shallowRef({ markers: [], issues: [], width: 0, height: 0 })
+const markerLayer = ref(),
+  markerPopup = ref()
+const markerDisplayRevision = ref(0)
+const clustering = createMarkerClustering()
+const clusteringOptions = computed(() => resolveMarkerClustering(props.markerClustering))
+const groupedMarkers = computed(() =>
+  clustering.update(overlay.value.markers, clusteringOptions.value, activeMarkerId.value),
+)
+const listSelection = shallowRef(null)
+const clusterList = computed(() => {
+  const selection = listSelection.value
+  if (!selection) return null
+  return (
+    groupedMarkers.value.clusters.find(
+      (cluster) =>
+        cluster.id === selection.id && JSON.stringify(cluster.memberIds) === selection.members,
+    ) || null
+  )
+})
+watch(clusterList, (value) => {
+  if (!value) listSelection.value = null
+})
+watch(
+  clusteringOptions,
+  () => {
+    viewer?.cancelClusterFocus()
+    clustering.clear()
+    listSelection.value = null
+  },
+  { flush: 'sync' },
+)
 const notices = shallowRef([])
 const gisStatus = shallowRef({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
 let viewer
@@ -69,7 +104,10 @@ watch(
 )
 watch(
   () => props.markers,
-  (values) => viewer?.setMarkers(values),
+  (values) => {
+    markerDisplayRevision.value++
+    viewer?.setMarkers(values)
+  },
   { deep: true },
 )
 watch(
@@ -104,8 +142,6 @@ async function reload() {
       return
     }
     const index = createComponents([candidate.scene], candidate)
-    console.log('构件树', index.tree)
-    console.log('构件数组', [...index.byId.values()])
     candidateAppearance = createAppearance(index, (event) => {
       appearanceRevision.value++
       viewer?.refresh()
@@ -113,7 +149,10 @@ async function reload() {
     })
     const previous = model,
       previousAppearance = appearance
-    viewer.show(candidate, index, candidateAppearance, props.initialView)
+    const viewWarning = viewer.show(candidate, index, candidateAppearance, props.initialView)
+    clustering.clear()
+    markerDisplayRevision.value++
+    listSelection.value = null
     navigationReady.value = contextAvailable
     model = candidate
     components = index
@@ -124,7 +163,11 @@ async function reload() {
     // 先恢复旧模型源材质并释放外观克隆，再释放几何、原材质与纹理。
     previousAppearance?.dispose()
     previous?.dispose()
-    notices.value = [...candidate.warnings, ...index.warnings]
+    notices.value = [
+      ...candidate.warnings,
+      ...index.warnings,
+      ...(viewWarning ? [viewWarning] : []),
+    ]
     viewer.setMarkers(props.markers)
     emit('component-tree-ready', cloneComponentTree(index.tree))
     emit('component-select', null)
@@ -190,8 +233,57 @@ function pointerUp(event) {
   pointer = undefined
 }
 function activateMarker(marker) {
+  viewer?.cancelClusterFocus()
+  listSelection.value = null
   activeMarkerId.value = activeMarkerId.value === marker.id ? null : marker.id
   emit('marker-click', marker)
+}
+function restoreMarkerFocus() {
+  markerLayer.value?.focus({ preventScroll: true })
+}
+function closeClusterList() {
+  listSelection.value = null
+  restoreMarkerFocus()
+}
+function closeMarkerOverlays() {
+  activeMarkerId.value = null
+  closeClusterList()
+}
+function showClusterList(memberIds) {
+  const cluster = groupedMarkers.value.clusters.find((candidate) => {
+    const ids = new Set(candidate.memberIds)
+    return memberIds.every((id) => ids.has(id))
+  })
+  if (cluster) listSelection.value = { id: cluster.id, members: JSON.stringify(cluster.memberIds) }
+}
+function activateCluster(cluster) {
+  if (!contextAvailable || !model) return
+  viewer?.cancelClusterFocus()
+  activeMarkerId.value = null
+  listSelection.value = null
+  const memberIds = [...cluster.memberIds]
+  emit('marker-cluster-click', {
+    id: cluster.id,
+    count: cluster.count,
+    memberIds: [...memberIds],
+    x: cluster.x,
+    y: cluster.y,
+  })
+  // 预测和真实分组都不能拆开时提供列表；中断操作不会执行这个完成回调。
+  if (
+    !viewer?.focusCluster(
+      cluster.members,
+      clusteringOptions.value.radius,
+      props.cameraTransition,
+      () => showClusterList(memberIds),
+    )
+  )
+    showClusterList(memberIds)
+}
+async function selectClusterMember(marker) {
+  activateMarker(marker)
+  await nextTick()
+  markerPopup.value?.focus({ preventScroll: true })
 }
 function popupStyle(x, y) {
   const width = Math.min(300, Math.max(0, overlay.value.width - 32))
@@ -217,6 +309,22 @@ function popupStyle(x, y) {
 }
 
 // 公开能力由 ViewerApi 约束；除高级 scene 接口外，查询均返回独立普通数据。
+function zoomView(method, options) {
+  if (options !== undefined && (!options || typeof options !== 'object' || Array.isArray(options)))
+    return false
+  return (
+    viewer?.[method]({
+      ...options,
+      duration:
+        options?.duration === undefined
+          ? props.cameraTransition?.duration === undefined
+            ? 300
+            : props.cameraTransition.duration
+          : options.duration,
+    }) || false
+  )
+}
+
 const api = {
   getComponentTree: () => (components ? cloneComponentTree(components.tree) : null),
   getSceneTree: () => (components ? sceneTree(components) : null),
@@ -259,7 +367,18 @@ const api = {
       return false
     return viewer?.focusPoint(point, { ...props.cameraTransition, ...options }) || false
   },
+  getViewState: () => viewer?.getViewState() || null,
+  setViewState: (state, options) => {
+    if (
+      options !== undefined &&
+      (!options || typeof options !== 'object' || Array.isArray(options))
+    )
+      return false
+    return viewer?.setViewState(state, { ...props.cameraTransition, ...options }) || false
+  },
   resetView: (options) => viewer?.reset({ ...props.cameraTransition, ...options }) || false,
+  zoomIn: (options) => zoomView('zoomIn', options),
+  zoomOut: (options) => zoomView('zoomOut', options),
   setViewDirection: (direction, options) =>
     viewer?.setViewDirection(direction, { ...props.cameraTransition, ...options }) || false,
   reload,
@@ -276,6 +395,7 @@ onMounted(() => {
         contextAvailable = false
         navigationReady.value = false
         pending?.abort()
+        listSelection.value = null
         error.value = '图形上下文已中断，请重新打开页面'
         emit('model-error', { message: error.value })
       },
@@ -300,6 +420,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   // 先停请求、渲染和事件监听，再释放模型；防止销毁后继续访问 GPU 或写入状态。
   generation++
+  clustering.clear()
   pending?.abort()
   viewer?.dispose()
   appearance?.dispose()
@@ -318,7 +439,7 @@ onBeforeUnmount(() => {
       '--mv-map-credit-top': `${navigationState.height ? navigationState.height + 24 : 16}px`,
     }"
     aria-label="BIM 模型查看器"
-    @keydown.esc="activeMarkerId = null"
+    @keydown.esc="closeMarkerOverlays"
   >
     <div
       ref="viewport"
@@ -326,9 +447,9 @@ onBeforeUnmount(() => {
       @pointerdown="pointer = { x: $event.clientX, y: $event.clientY }"
       @pointerup="pointerUp"
     />
-    <div class="mv-markers">
+    <div ref="markerLayer" class="mv-markers" tabindex="-1" aria-label="模型标记">
       <button
-        v-for="marker in overlay.markers.filter((item) => item.visible)"
+        v-for="marker in groupedMarkers.singles"
         :key="marker.id"
         class="mv-marker"
         :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
@@ -340,8 +461,27 @@ onBeforeUnmount(() => {
           ><span class="mv-dot" />{{ marker.label }}</slot
         >
       </button>
+      <MarkerClusters
+        :clusters="groupedMarkers.clusters"
+        :list="clusterList"
+        :list-style="clusterList ? popupStyle(clusterList.x, clusterList.y) : undefined"
+        :disabled="!navigationReady"
+        :enabled="clusteringOptions.enabled"
+        :marker-revision="markerDisplayRevision"
+        @activate="activateCluster"
+        @select="selectClusterMember"
+        @close="closeClusterList"
+        @restore-focus="restoreMarkerFocus"
+      >
+        <!-- 仅在宿主提供时转发，避免空的转发插槽遮蔽默认数量圆点。 -->
+        <template v-if="$slots['marker-cluster']" #cluster="slotProps">
+          <slot name="marker-cluster" v-bind="slotProps" />
+        </template>
+      </MarkerClusters>
       <article
         v-if="activeMarker"
+        ref="markerPopup"
+        tabindex="-1"
         role="dialog"
         :aria-label="activeMarker.label"
         class="mv-popup"

@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.3.4**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.3.5**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -30,7 +30,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 能力       | 当前支持内容                                                    | 使用入口                                         |
 | ---------- | --------------------------------------------------------------- | ------------------------------------------------ |
 | 模型加载   | 通过 Manifest 加载 GLB/glTF，处理外部 buffer/image 和可选元数据 | `MineViewer`、`modelSource`                      |
-| 三维浏览   | 拖动旋转、滚轮缩放、右键平移、容器尺寸适配、初始全模型视角      | `initialView`、`resetView()`                     |
+| 三维浏览   | 拖动旋转、滚轮及方法缩放、右键平移、容器尺寸适配、初始全模型视角      | `initialView`、`resetView()`、`zoomIn()`、`zoomOut()`                     |
 | 视角导航   | Home、26 方向骰子、六个标准方向方法及实时显隐                   | `navigation`、`setViewDirection()`               |
 | 构件树     | 内置目录、名称搜索、分支显隐、选中定位及完整树查询              | `navigation.componentTree`、`getComponentTree()` |
 | 场景查询   | 源场景结构快照、活的 Three.js 根节点、对象对应 ID               | `getSceneTree()` 等                              |
@@ -39,6 +39,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 外观控制   | 显隐、两档透明、颜色、批量设置及状态同步                          | `setComponentAppearance()` 等                    |
 | 差异与恢复 | 当前净差异、合并导入、恢复单节点或全部覆盖                      | `getAppearanceChanges()` 等                      |
 | 标签       | 原始模型坐标点、构件锚点、模型偏移、屏幕偏移                    | `markers`                                        |
+| Marker 聚合 | 可选屏幕距离聚合、数量按钮、自定义展示及分页成员列表 | `markerClustering`、`marker-cluster`、`marker-cluster-click` |
 | 弹窗与模板 | 默认标签/弹窗、自定义插槽、点击切换和关闭                       | `marker`、`marker-popup`                         |
 | GIS 配准   | 三点或多点水平配准、可选高程、ENU/ECEF 矩阵、误差报告           | `createGisPlacement()`                           |
 | 地图影像   | 有限范围天地图影像、透明度、独立加载状态                        | `gis`、`gis-status`                              |
@@ -70,7 +71,7 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.4
+npm install @caojinyu111/vue-bim-viewer@0.3.5
 ```
 
 运行环境要求 Vue **3.5.43**、Three.js **0.183.1** 和支持 WebGL2 的浏览器。Vue 与 Three.js 为精确版本的共享 peerDependencies，npm 7+ 会补齐尚未安装的 peer；已有不兼容版本的宿主先执行 `npm install vue@3.5.43 three@0.183.1`。three-tile **0.12.2** 与 Proj4js 随 SDK 安装，three-tile 随 SDK 构建。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
@@ -100,7 +101,8 @@ const tree = shallowRef(null)
 const errorMessage = ref('')
 const selectedId = ref(null)
 const modelSource = ref({ manifestUrl: '/models/manifest.json' })
-const initialView = { direction: { x: 1.15, y: 0.72, z: 1.35 }, fitPadding: 1.35 }
+// 可选：传入 getViewState() 返回的快照；省略时自动适配全模型。
+const initialView = null
 const markers = ref([])
 const components = computed(() => flattenComponentTree(tree.value))
 
@@ -139,7 +141,7 @@ function locateFirst() {
       <MineViewer
         ref="viewer"
         :model-source="modelSource"
-        :initial-view="initialView"
+        :initial-view="initialView || undefined"
         :markers="markers"
         @component-tree-ready="onReady"
         @model-loaded="onLoaded"
@@ -320,22 +322,26 @@ async function refreshModel() {
 | ------------------ | ------------------------- | ------------------------------------------------- | ------------------------------------------------- |
 | `modelSource`      | `ModelSource`             | 必填                                              | 监听 `manifestUrl` 字符串变化，自动加载/重载      |
 | `markers`          | `Marker[]`                | `[]`                                              | 深度监听响应式标签数据，更新标签投影和显示        |
-| `initialView`      | `InitialView`             | `{}`                                              | 成功展示模型时交给渲染器，用于全模型适配与重置    |
-| `cameraTransition` | `CameraTransitionOptions` | `{ duration: 800 }`                               | 定位和重置时读取，设置默认过渡时长                |
+| `markerClustering` | `MarkerClusteringOptions` | `{ enabled: false, radius: 48 }` | 可选屏幕聚合，实时调整，不重新加载模型 |
+| `initialView`      | `ViewState`               | 未设置                                            | 使用模型坐标视角快照初始化及重置；省略时自动适配    |
+| `cameraTransition` | `CameraTransitionOptions` | 未设置时定位/导航 800ms、缩放 300ms | 设置相机操作的默认过渡时长，单次调用可覆盖 |
 | `gis`              | `GisOptions`              | 不加载地图                                        | 可选天地图影像及 DEM，见 9.9、9.11                |
 | `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }`                            | 深度监听，实时更新背景，不重载模型                |
 | `navigation`       | `NavigationOptions`       | `{ home: true, cube: true, componentTree: true }` | 构件目录、Home 与方向骰子分别实时显隐，不重载模型 |
 
-Vue 模板中分别使用 `:model-source`、`:markers`、`:initial-view`、`:camera-transition`、`:gis`、`:background` 和 `:navigation`。
+Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background` 和 `:navigation`。
 
-`InitialView` 的字段：
+`initialView` 现在只接受 `ViewState` 快照，不再支持旧的 `direction` / `fitPadding` 配置。快照中的 `position`、`target`、`up` 使用原模型坐标，不包含展示居中偏移；`near`、`far`、`fov`、`aspect` 和距离边界由 SDK 按当前模型与容器自动计算。省略 `initialView` 时仍自动适配全模型；快照非法时回退自动适配，并在 `model-loaded.warnings` 中说明原因。
 
-| 字段         | 类型     | 有效默认值                      | 含义                                                             |
-| ------------ | -------- | ------------------------------- | ---------------------------------------------------------------- |
-| `direction`  | `Point3` | `{ x: 1.15, y: 0.72, z: 1.35 }` | 从观察目标指向相机的方向向量，会归一化，不是经纬度或相机绝对位置 |
-| `fitPadding` | `number` | `1.35`                          | 包围盒适配留白倍率，必须为有限正数；越大看起来越远               |
+`getViewState()` 返回的快照可以直接保存，并在下一次挂载时传给 `initialView`：
 
-非法或零方向使用默认方向；无效留白倍率使用默认值。`initialView` 没有独立的实时相机更新监听，不应当作相机控制 API；替换该配置后，可通过 `reload()` 在下一次成功展示时重新应用。`focusComponent()` 保持当前观察方向，`resetView()` 按当前渲染器持有的初始配置适配整个模型。
+```js
+const savedView = viewer.value.getViewState()
+// 宿主自行保存 savedView，并在下次挂载时：
+// <MineViewer :initial-view="savedView" />
+```
+
+`initialView` 只在模型成功展示时应用；运行中切换视角使用 `setViewState()`。`focusComponent()` 保持当前观察方向，`resetView()` 按当前组件持有的 `initialView` 或自动适配规则恢复。
 
 <a id="navigation"></a>
 
@@ -497,6 +503,10 @@ function onBackgroundError(error) {
 | `selectComponent(id)`                   | ID 或 `null`                            | `boolean`                     | 有效选择/清空成功为 `true`；未知 ID/未就绪为 `false`                   |
 | `focusComponent(id, options?)`          | ID；可选 `{ duration }`，毫秒           | `boolean`                     | 接受定位为 `true`；未知 ID/未就绪/非法时长为 `false`；不自动选择       |
 | `focusPoint(point, options?)`          | 原模型 `{ x, y, z }`；可选 `{ distance, duration }` | `boolean` | 保持观察方向，默认保持距离；无效参数或不可用时返回 `false`，不打断有效动画 |
+| `getViewState()`                        | 无                                      | `ViewState \| null`           | 返回当前实际模型坐标视角；未就绪、上下文丢失或销毁为 `null`             |
+| `setViewState(state, options?)`         | `ViewState`；可选 `{ duration }`        | `boolean`                     | 接受恢复请求为 `true`；非法、未就绪或不可用返回 `false`，不打断有效动画 |
+| `zoomIn(options?)`                     | 可选 `{ factor, duration }`；倍率默认 `1.2` | `boolean` | 围绕当前观察中心拉近；非法、不可用或目标已达边界返回 `false` |
+| `zoomOut(options?)`                    | 可选 `{ factor, duration }`；倍率默认 `1.2` | `boolean` | 围绕当前观察中心拉远；返回 `true` 仅表示接受改变目标视距的请求 |
 | `resetView(options?)`                   | 可选 `{ duration }`，毫秒               | `boolean`                     | 有模型时重置全模型视角；无模型/非法时长为 `false`                      |
 | `setViewDirection(direction, options?)` | 六个标准方向；可选 `{ duration }`，毫秒 | `boolean`                     | 保留观察目标与距离；未就绪、非法方向或时长返回 `false`，不打断有效动画 |
 | `reload()`                              | 无                                      | `Promise<void>`               | 取消前一轮加载；失败保留旧场景，通过事件报告结果                       |
@@ -585,7 +595,35 @@ viewer.value.focusPoint({ x: 0, y: 0, z: 0 }, { duration: 0 })
 
 `FocusPointOptions` 继承 `CameraTransitionOptions`，新增可选 `distance`。XYZ 必须全部为有限数值，显式距离必须为有限正数，时长必须为有限非负数；派生相机参数无效、模型未就绪、销毁或图形上下文丢失时返回 `false`，保留当前有效动画。返回 `true` 仅表示接受操作。单次时长优先于组件 `cameraTransition`，默认 800ms；连续调用、用户操作中断和减少动态效果行为与构件定位一致。参数对象和输入点均不会被改写。
 
+`ViewState` 是可序列化的模型坐标视角快照：
+
+```ts
+interface ViewState {
+  position: Point3
+  target: Point3
+  up: Point3
+}
+```
+
+`getViewState()` 返回相机当前位置、观察中心和上方向的普通对象；动画期间返回当前实际姿态。`setViewState()` 使用同一模型坐标恢复视角，默认 800ms，`duration: 0` 立即完成。SDK 会重新计算裁剪面和控制器边界，不接受 `near`、`far`、`fov` 或 `aspect` 等渲染内部参数。位置与目标重合、上方向无效或与观察方向平行时调用失败，当前动画保持不变。设置视角会接管旧的缩放、聚合定位和相机动画，但不会改变选择、外观、Marker 或 GIS 状态。
+
+
 允许聚焦模型内部及包围盒外的点，不吸附表面、不寻找无遮挡方向、不自动剖切；目标点可能被前方几何遮挡。缩放范围和裁剪面按需扩展以容纳指定距离及模型，GIS 沿用现有远裁剪补偿。Home 仍恢复全模型初始视角，选择、Marker 和弹窗沿用现有状态及可见性规则。
+
+`zoomIn(options?)` 和 `zoomOut(options?)` 围绕当前观察中心改变相机距离，保持观察方向；定位构件或点之后围绕新的观察中心缩放。`ZoomOptions` 继承 `CameraTransitionOptions`，新增 `factor`，默认 `1.2`，必须为有限且大于 `1` 的数值。放大时距离除以倍率，缩小时乘以倍率；除边界夹取外，使用相同倍率放大再缩小可恢复原距离。
+
+```js
+viewer.value.zoomIn()
+viewer.value.zoomOut()
+viewer.value.zoomIn({ factor: 1.5, duration: 200 })
+viewer.value.zoomOut({ duration: 0 }) // 即时缩小
+```
+
+缩放时长依次取单次 `duration`、组件 `cameraTransition.duration`、默认 `300ms`；必须为有限非负数。系统启用“减少动态效果”时即时完成。缩放遵守当前控制器的最小和最大距离，并保证相机与观察中心的安全间距；模型适配、构件定位或点定位可能改变这些距离边界。超出范围时夹取到边界，不扩大缩放限制，不处理几何碰撞或自动剖切。
+
+动画期间连续调用按尚未完成的目标距离累计，放大和缩小共用累计目标，从当前实际姿态平滑转向更新后的目标，不排队播放。滚轮、拖动、其他相机操作、成功替换模型、上下文丢失和销毁会清理旧缩放目标。在其他定位动画中调用缩放，以调用时的实际姿态接管；接受缩放后旧聚合定位不再弹出过期成员列表。缩放不改变选择和构件外观，Marker 及聚合随相机重新投影。
+
+返回 `true` 表示接受改变目标距离的请求，不表示动画完成。参数非法、派生相机参数无效、模型未就绪、已销毁、上下文不可用或目标距离已经达到对应边界时返回 `false`，不打断现有有效动画。参数对象不会被改写。SDK 不内置缩放按钮，宿主可通过组件 ref 绑定自己的按钮。
 
 选择样式由 SDK 内置：青绿色表面高亮与浅绿色细轮廓，保留纹理、明暗和原有透明度，遵循场景遮挡，不显示穿透轮廓、不闪烁，也不自动创建标签。选择父节点时作用于其可见且非完全透明的子网格；隐藏构件不显示高亮。三维点击、构件树调用及 API 选择使用同一效果，不提供样式修改或禁用参数。
 
@@ -904,7 +942,85 @@ function onMarkerClick(marker) {
 
 点击标签打开或切换弹窗，再次点击同一标签关闭。自定义弹窗调用 `close()` 关闭；Escape 键事件到达 Viewer 时也会关闭。标签移除、隐藏或离开有效视口后，活动弹窗会关闭。`marker` 插槽的 `selected` 表示该标签的弹窗是否活动，不是模型构件是否被选中。
 
-当前没有几何遮挡检测：标签在其他模型物体后面仍可能显示；也没有海量 DOM 标签聚合、虚拟化或避让布局。
+当前没有几何遮挡检测：标签在其他模型物体后面仍可能显示；聚合按点位屏幕距离计算，不测量自定义标签矩形，也不提供标签避让布局。
+
+### 7.4 屏幕聚合
+
+聚合默认关闭，宿主通过 `markerClustering` 开启。XYZ 和构件定位均参与，不区分业务类型、楼层或模型空间距离；沿视线相近的不同深度点也可能聚合。
+
+```vue
+<MineViewer
+  :model-source="modelSource"
+  :markers="markers"
+  :marker-clustering="{ enabled: true, radius: 48 }"
+  @marker-cluster-click="cluster => console.log(cluster.memberIds)"
+/>
+```
+
+`enabled` 默认 false，仅 true 开启；`radius` 默认为 48 CSS 像素，非有限正数回退默认值。配置支持响应式修改。计算使用包含 `screenOffset` 的显示坐标，只统计有效且可见的 Marker；相机背面、视口外或绑定隐藏构件的点不计数。至少两个点组成聚合，新成员在 radius 内加入，原成员超过 radius × 1.25 后拆出。聚合以固定代表点分组，不沿邻居递归扩张；图标位置为成员屏幕坐标平均值。相机缩放、旋转、平移和视口变化会更新分组。
+
+点击数量按钮会先发出 `marker-cluster-click`，再尝试保持观察方向拉近成员范围，并将其中心设为旋转中心。动画沿用 `cameraTransition`；减少动态效果设置下即时切换。若坐标重合、沿视线重叠、无法有效拉近或预测不能拆分，则打开成员列表，不反复放大。拖动、其他相机操作和数据变化会中断旧操作，中断后不弹出列表。相机不处理遮挡或自动剖切；Home 仍恢复全模型，骰子围绕新目标切换方向。
+
+成员列表每页 50 项，点击成员复用原有 `marker-popup` 插槽并触发 `marker-click`。活动弹窗对应点临时独立显示，关闭后再参与聚合。聚合集合变化、关闭功能或模型成功重载会关闭列表；重载失败保留旧模型的聚合状态。聚合不改写原始 Marker、外观或构件选择；内部计算和组件不单独导出，也不新增实例方法。
+
+事件参数 `MarkerClusterInfo` 为点击时独立快照：`{ id, count, memberIds, x, y }`，其中 x/y 为 CSS 屏幕坐标，id 仅用于当前 Viewer 聚合显示，不应作为持久业务 ID。聚合按钮不触发普通 `marker-click`。现有 `marker` 和 `marker-popup` 插槽继续只接收普通 Marker。
+
+<a id="cluster-slot"></a>
+
+### 7.5 自定义聚合标签
+
+`marker-cluster` 只定制聚合标签的展示内容，不替换成员列表。SDK 外层原生按钮继续负责投影定位、禁用状态、事件隔离和点击拉近/列表回退；点击只发出一次原有 `marker-cluster-click`，事件参数保持独立快照契约。无需宿主重新绑定点击，也不提供额外激活函数。
+
+```vue
+<MineViewer
+  :model-source="modelSource"
+  :markers="markers"
+  :marker-clustering="{ enabled: true, radius: 48 }"
+>
+  <template #marker-cluster="{ cluster, disabled, expanded }">
+    <BusinessCluster
+      :count="cluster.count"
+      :members="cluster.members"
+      :disabled="disabled"
+      :expanded="expanded"
+    />
+  </template>
+</MineViewer>
+```
+
+`BusinessCluster` 代表宿主自行实现的展示组件，根内容使用 span、SVG 等展示元素，不嵌套按钮、链接或输入框。也可以直接在插槽中编写图标和文字，无需创建单独组件。
+
+| 参数 | 说明 |
+| --- | --- |
+| `cluster: MarkerClusterRenderInfo` | id、真实 count、稳定排序的 memberIds、成员视图 members，以及 Viewer 内 CSS 像素 x/y |
+| `cluster.members` | 只含成员 id、label、data；不暴露内部投影、Three 对象或缓存 |
+| `disabled` | 当前是否禁止操作；SDK 外层按钮同时设置 disabled |
+| `expanded` | 当前聚合的默认成员列表是否打开，不表示相机动画状态 |
+
+上述参数按只读契约访问；id 不是持久业务 ID。data 沿用宿主业务引用，不深复制或深冻结；应更新原始 markers，而不是修改插槽参数。响应式更新成员 label/data 后，即使相机静止也会刷新内容。成员视图按成员关系与数据变化复用，相机位置变化不深复制业务数据。
+
+未提供插槽时显示默认青绿色数量圆点。自定义模式下外层按钮透明、无装饰边框、零内边距、中心对齐，点击区域至少 44×44px，较大内容自然撑开。宿主负责图标、文字、配色、形状与悬停；SDK 保留焦点轮廓和禁用反馈，并负责打开成员列表时聚焦关闭按钮、相关按钮移除后的焦点恢复。自定义插槽只负责展示，不需接管这些行为，也不新增快捷键。
+
+只调整默认外观时，可在宿主的 scoped 样式中通过 `:deep()` 覆盖默认聚合按钮。以下示例中的 `.viewer-shell` 是包裹 MineViewer 的宿主容器；选择器排除自定义插槽模式，避免影响宿主自行绘制的内容：
+
+```vue
+<style scoped>
+.viewer-shell :deep(.mv-marker-cluster:not(.mv-marker-cluster-custom)) {
+  min-width: 48px;
+  height: 48px;
+  background: #192a36;
+  color: #edf4f6;
+  border-color: #bcc0c2;
+  border-radius: 8px;
+}
+</style>
+```
+
+使用非 scoped 样式时，将 `:deep(...)` 改为其中的普通选择器即可。建议保留至少 44×44px 的点击区域，并保留定位变换、焦点轮廓及禁用反馈。需要自定义图标、文字或业务状态时，使用上面的 `marker-cluster` 插槽。
+
+0.3.5 不读取 `--mv-cluster-*` CSS 变量。如果宿主曾配置开发阶段的这些变量，请迁移为 CSS 覆盖或自定义插槽；其他功能的 CSS 变量不受影响。
+
+自定义图形尺寸不改变聚合半径；不测量文字或标签矩形，不增加边缘排布、避让或遮挡检测。默认成员列表仍每页 50 项，选择成员继续使用 marker-popup 和 marker-click。
 
 <a id="events-slots"></a>
 
@@ -922,6 +1038,7 @@ function onMarkerClick(marker) {
 | `component-select`     | `ComponentNode \| null` | API 选择、三维拾取、清空选择或新模型就绪时清空；不是相机定位事件 |
 | `appearance-change`    | `AppearanceEvent`       | 外观自身覆盖发生变化；包含 source、before、after 和 result       |
 | `marker-click`         | `Marker`                | 标签被点击，包括再次点击同一标签关闭弹窗时                       |
+| `marker-cluster-click` | `MarkerClusterInfo` | 点击聚合数量按钮，执行内置拉近或成员列表前 |
 | `gis-status`           | `GisStatus`             | 影像加载、部分失败、就绪、关闭或错误状态变化                     |
 | `terrain-status`       | `TerrainStatus`         | DEM 准备、部分失败、就绪、关闭或错误；与影像计数独立             |
 | `background-error`     | `{ message: string }`   | 背景颜色/图片配置无效或当前图片加载失败；与模型错误独立          |
@@ -945,6 +1062,7 @@ function onAppearanceChange(event) {
 | -------------- | ------------------------------------------------ | ------------------------------------------- |
 | `marker`       | `{ marker: ProjectedMarker, selected: boolean }` | 标签圆点与 `label`，由 SDK 外层按钮处理点击 |
 | `marker-popup` | `{ marker: ProjectedMarker, close: () => void }` | 标题、关闭按钮和模型位置                    |
+| `marker-cluster` | `MarkerClusterSlotProps`：`{ cluster, disabled, expanded }` | 聚合数量圆点，外层按钮由 SDK 管理 |
 
 `ProjectedMarker` 在 Marker 数据上增加屏幕 `x/y`（CSS 像素）、投影可见性 `visible` 和原模型位置 `modelPosition`。屏幕坐标只用于界面布局，不能作为 GIS 控制点。`marker-click` 的公开类型为 `Marker`，需要投影字段时使用插槽提供的 `ProjectedMarker`。
 
@@ -1294,9 +1412,10 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `Bounds`                  | `{ min, max, center }`                                                 | [构件查询](#viewer-api)    |
 | `Anchor`                  | `'origin' \| 'center' \| 'bounds-top'`                                 | [锚点](#viewer-api)        |
 | `ModelSource`             | `{ manifestUrl }`                                                      | [加载](#model-loading)     |
-| `InitialView`             | `direction?`、`fitPadding?`                                            | [Props](#props)            |
-| `CameraTransitionOptions` | `duration?`：毫秒，默认 800，0 即时定位                                | [定位与视角](#viewer-api)  |
+| `ViewState`               | 模型坐标 `position`、`target`、`up` 快照                                | [视角恢复](#viewer-api)    |
+| `CameraTransitionOptions` | `duration?`：毫秒，定位/导航默认 800，缩放默认 300，0 即时完成                                | [定位与视角](#viewer-api)  |
 | `FocusPointOptions`       | 继承相机过渡选项，增加 `distance?`，模型单位，省略保持当前距离            | [坐标定位](#viewer-api)    |
+| `ZoomOptions`             | 继承相机过渡选项，增加 `factor?`，默认 `1.2`；未配置时缩放时长 `300ms` | [视角缩放](#viewer-api) |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
 | `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
@@ -1309,13 +1428,18 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `OperationResult`         | `changedIds`、`unknownIds`、`skipped`、`error?`                        | [操作结果](#appearance)    |
 | `AppearanceEvent`         | `source`、`before`、`after`、`result`                                  | [事件](#events-slots)      |
 | `Marker`                  | ID、文本、位置、屏幕偏移及业务数据                                     | [标签](#markers)           |
+| `MarkerClusteringOptions` | 可选 enabled（默认 false）、radius（默认 48 CSS 像素） | [聚合](#markers) |
+| `MarkerClusterInfo` | 聚合点击快照：id、count、memberIds、屏幕 x/y | [聚合](#markers) |
+| `MarkerClusterMember` | 只读 id、label、data 的聚合成员展示视图 | [聚合插槽](#cluster-slot) |
+| `MarkerClusterRenderInfo` | 只读聚合展示信息，包含 memberIds 和 members | [聚合插槽](#cluster-slot) |
+| `MarkerClusterSlotProps` | cluster、disabled、expanded 插槽参数 | [聚合插槽](#cluster-slot) |
 | `ProjectedMarker`         | Marker 加屏幕 x/y、visible、modelPosition                              | [插槽](#events-slots)      |
 | `MarkerOverlay`           | 投影标签数组、issues、视口宽高；内部布局数据的公开类型，无独立查询方法 | [标签](#markers)           |
 | `ModelInfo`               | 模型身份、名称、URL、统计、warnings                                    | [加载事件](#model-loading) |
 | `SceneAssociation`        | 可选 `nodes` 源节点索引，Loader 关联辅助类型，无独立查询方法           | [场景读取](#viewer-api)    |
 | `NavigationOptions`       | `home?`、`cube?`、`componentTree?`，均默认 true                        | [导航](#navigation)        |
 | `ViewDirection`           | 六个标准观察方向                                                       | [导航](#navigation)        |
-| `ViewerApi`               | 组件 ref 暴露的 19 个方法                                              | [实例方法](#viewer-api)    |
+| `ViewerApi`               | 组件 ref 暴露的 23 个方法                                              | [实例方法](#viewer-api)    |
 | `GeographicCoordinate`    | `longitude`、`latitude`、`height?`                                     | [GIS](#gis)                |
 | `SurveyCoordinate`        | `northing`、`easting`、`height?`                                       | [GIS](#gis)                |
 | `GisControlPoint<T>`      | `{ model: Point3, map: T }`，T 默认 GeographicCoordinate               | [GIS](#gis)                |
@@ -1352,7 +1476,7 @@ const {
 } = require('@caojinyu111/vue-bim-viewer')
 ```
 
-样式需在前端入口导入，不在 Node 中通过 `require` 读取。遇到 Vue/Three 重复实例时，检查依赖树和本地链接；Vite 应用可按需设置 `resolve.dedupe: ['vue', 'three']`。Three.js 的 CommonJS 入口可能输出弃用提示。
+样式需在前端入口导入，不在 Node 中通过 `require` 读取。遇到 Vue/Three 重复实例时，检查依赖树和本地链接；Vite 应用可按需设置 `resolve.dedupe: ['vue', 'three']`。
 
 ### 11.2 JavaScript 与 TypeScript 支持
 
@@ -1391,7 +1515,7 @@ const {
 
 当前支持标准非压缩 GLB/glTF；没有在 Loader 中配置 Draco、KTX2、Meshopt 解码器，也不直接加载 IFC、RVT 等源 BIM 格式。当前包没有模型编辑、任意相机控制、动画播放、裁剪剖切、距离测量或业务模拟等公开能力。
 
-Marker 使用 DOM 标签，没有海量标签布局优化；GIS 方法提供定位计算，SDK 支持可选有限范围的天地图影像及 DEM 地形（见 9.11），不加载注记或其他 GIS 引擎。新增需求应先区分是接入层业务功能，还是需要扩展 SDK 的公开能力。
+Marker 使用 DOM 标签，可选屏幕距离聚合以减少同时展示的标签，默认关闭；不提供几何遮挡检测、标签避让或虚拟化，不承诺固定标签容量。GIS 方法提供定位计算，SDK 支持可选有限范围的天地图影像及 DEM 地形（见 9.11），不加载注记或其他 GIS 引擎。新增需求应先区分是接入层业务功能，还是需要扩展 SDK 的公开能力。
 
 ### 12.1 实际适用范围
 
@@ -1409,7 +1533,7 @@ GIS 仅接受 EPSG:4529、4490、4326，采用局部水平刚性配准和已知�
 | 外观更新成本       | 每次修改会同步扫描节点，已克隆材质可能重复更新；大模型和高频批量修改需结合实际业务压测。                                                |
 | 加载内存与并发     | 指纹同步计算，外部资源并行请求且采用 `cache: no-store`；切换时旧模型与候选模型同时驻留，会增加峰值内存。                                |
 | 统计口径           | `stats.bytes` 仅含主文件，`stats.triangles` 不乘实例数，不代表全部下载量或真实绘制总量。                                                |
-| Marker 容量与交互  | 无聚类、遮挡检测、避让或虚拟化。`marker` 插槽位于按钮内，避免嵌套交互控件；复杂操作放在弹窗插槽。                                       |
+| Marker 容量与交互  | 提供可选聚合（默认关闭，半径默认 48 CSS 像素），不提供几何遮挡检测、标签避让或虚拟化。`marker` 插槽位于按钮内，避免嵌套交互控件；复杂操作放在弹窗插槽。                                       |
 | Three.js 类型      | TypeScript 消费项目需额外安装匹配的 `@types/three`，见第 2 节。                                                                         |
 
 ### 12.3 应用验收建议

@@ -15,18 +15,25 @@ export type Anchor = 'origin' | 'center' | 'bounds-top'
 export interface ModelSource {
   manifestUrl: string
 }
-export interface InitialView {
-  /** 初始观察方向向量，无量纲；fitPadding 是包围盒适配的留白倍率。 */
-  direction?: Point3
-  fitPadding?: number
+/** 可序列化的相机快照；坐标使用原模型空间，不包含展示居中偏移。 */
+export interface ViewState {
+  position: Point3
+  target: Point3
+  up: Point3
 }
 export interface CameraTransitionOptions {
-  /** 过渡时长，毫秒；默认 800，0 即时定位，必须为有限非负数。 */
+  /** 过渡时长，毫秒；定位/导航默认 800，缩放默认 300；单次调用优先于组件配置，0 即时完成，必须为有限非负数。 */
   duration?: number
 }
 export interface FocusPointOptions extends CameraTransitionOptions {
   /** 相机到目标点的距离，沿用模型单位；省略则保持调用时距离，必须为有限正数。 */
   distance?: number
+}
+export interface ZoomOptions extends CameraTransitionOptions {
+  /** 缩放倍率，默认 1.2；必须为有限且大于 1 的数值。 */
+  factor?: number
+  /** 过渡时长，毫秒；优先于 cameraTransition.duration，均未设置时默认 300，0 即时缩放。 */
+  duration?: number
 }
 /** 普通静态背景图按容器居中 cover；加载期间或失败时显示纯色。 */
 export interface BackgroundOptions {
@@ -132,6 +139,39 @@ export interface ProjectedMarker extends Marker {
   visible: boolean
   modelPosition: Point3
 }
+/** 按 CSS 屏幕距离聚合；默认关闭，非法半径回退为 48px。 */
+export interface MarkerClusteringOptions {
+  enabled?: boolean
+  radius?: number
+}
+/** 聚合点击时的数据快照，不包含内部索引或 Three.js 对象。 */
+export interface MarkerClusterInfo {
+  id: string
+  count: number
+  memberIds: string[]
+  x: number
+  y: number
+}
+/** 聚合展示用成员视图；data 沿用宿主业务引用，按只读契约访问。 */
+export interface MarkerClusterMember {
+  readonly id: string
+  readonly label: string
+  readonly data?: Readonly<Record<string, unknown>>
+}
+/** 不包含内部投影成员、相机或缓存；id 仅标识当前 Viewer 的聚合。 */
+export interface MarkerClusterRenderInfo {
+  readonly id: string
+  readonly count: number
+  readonly memberIds: readonly string[]
+  readonly members: readonly MarkerClusterMember[]
+  readonly x: number
+  readonly y: number
+}
+export interface MarkerClusterSlotProps {
+  cluster: MarkerClusterRenderInfo
+  disabled: boolean
+  expanded: boolean
+}
 export interface MarkerOverlay {
   markers: ProjectedMarker[]
   issues: string[]
@@ -197,6 +237,14 @@ export interface ViewerApi {
   focusComponent(id: string, options?: CameraTransitionOptions): boolean
   /** 按原模型坐标聚焦并保持观察方向；无效参数或未就绪时返回 false，不打断有效动画。 */
   focusPoint(point: Point3, options?: FocusPointOptions): boolean
+  /** 围绕当前观察中心拉近视角；非法、不可用或目标已达边界时返回 false，不打断有效动画。 */
+  zoomIn(options?: ZoomOptions): boolean
+  /** 围绕当前观察中心拉远视角；返回 true 仅表示接受改变目标视距的请求。 */
+  zoomOut(options?: ZoomOptions): boolean
+  /** 读取当前实际视角；未就绪、上下文丢失或销毁时返回 null。 */
+  getViewState(): ViewState | null
+  /** 应用模型坐标中的视角快照；未就绪或非法时返回 false，不打断有效动画。 */
+  setViewState(state: ViewState, options?: CameraTransitionOptions): boolean
   /** 按 initialView 平滑适配整个模型；未就绪或非法时长返回 false。 */
   resetView(options?: CameraTransitionOptions): boolean
   /** 切换六个标准方向，保持观察目标和距离；未就绪、非法方向或时长返回 false。 */

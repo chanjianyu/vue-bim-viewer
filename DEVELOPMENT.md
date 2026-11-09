@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.3.4**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
+本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.3.5**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
 
 ## 环境与安装
 
@@ -20,6 +20,8 @@ npm run check
 | `src/index.js`        | 公开运行入口和样式导入                                  |
 | `src/MineViewer.vue`  | JavaScript Vue 组件、Props、事件、插槽及实例方法        |
 | `src/*.js`            | 渲染、模型、构件、外观、相机、背景、Marker、GIS 与影像  |
+| `src/camera-zoom.js` | 每 Viewer 独立的缩放目标、参数与边界计算，复用相机动画 |
+| `src/marker-clustering.js` / `src/MarkerClusters.vue` | 屏幕距离聚合、默认数量按钮、自定义展示和分页成员列表 |
 | `src/selection.js`    | 内置选中填色、轮廓和临时材质生命周期                    |
 | `src/gis/`            | 地图坐标适配、three-tile 图层、DEM 数据与网格、请求预算 |
 | `src/navigation/`     | Home、26 方向骰子及相机方向同步                         |
@@ -51,6 +53,10 @@ DEM 默认关闭；相对模式以配准参考点的 DEM 高程为零，真实�
 GIS 控制点的模型坐标沿用源模型单位；默认最小二乘配准要求水平分散且不共线，`first-point` 模式由首点固定位置、其余点确定方向。`metersPerUnit` 负责将模型单位换算为 GIS 使用的米制坐标。
 
 three-tile/plugin 在启用地图时延迟导入，避免其 GeoJSON 初始化依赖 OffscreenCanvas 导致 Node/SSR 导入失败。实际启用 GIS 地图的浏览器仍需支持 `OffscreenCanvas`、`fetch`、`createImageBitmap`、`AbortSignal.any` 和 `AbortSignal.timeout`；启用 DEM 还需 `DecompressionStream`。构建会生成私有共享块与插件块（ESM/CJS 各自一套），它们随整个 `dist/` 分发，不作为公开子路径。不要只复制 `index.js` 或 `index.cjs`。
+
+Marker 聚合由包内 `marker-clustering.js` 维护每实例的网格与聚散缓冲，`MarkerClusters.vue` 显示数量和分页成员。相机预测共用实际投影函数，先验证可见性与拆分结果，再复用已有相机动画。完成回调在最终投影后执行，取消时丢弃，避免拖动或数据变化后打开过期列表。Viewer 缓存相机矩阵与投影；标记、显隐或尺寸变化使缓存失效，无关 GIS 渲染帧不会重复聚合。功能验证统一在宿主执行，尤其覆盖 2000 点、完全重合、成员弹窗、动画中断与静止停止调度；构造数据与真实业务数据分别说明。
+
+相机操作共用 `camera-motion.js` 的动画与完成/取消回调。`camera-zoom.js` 不独立调度 RAF，连续调用累计尚未完成的目标距离，外部相机操作或用户交互会清理旧缩放目标。定位/导航默认 800ms，缩放默认 300ms；单次 duration 优先于组件配置，0 或减少动态效果设置即时完成。
 
 ## 检查命令
 
@@ -87,11 +93,21 @@ npm run types:watch
 4. 涉及布局时检查桌面与窄屏；按变更回归 Home、骰子、模型选择、Marker 和 GIS。宿主未启用的能力明确记录为未覆盖，不用合成夹具代替真实宿主验收。
 5. 验证结果随交付说明提供，不在 SDK 内累计临时报告、截图或安装包。构建与链接成功不能代替浏览器功能验证。
 
-本地联调完成后保留 npm link。验收安装包时，在消费应用中安装指定 `.tgz`，直接运行应用构建和浏览器验证，完成后按需要恢复链接。不要用直接导入 SDK 源码的方式代替公开包入口验证。
+本地联调完成后保留 npm link。统一宿主为同级 `../bim-view-tool`：在宿主根目录执行 `npm run check`，它会重建 SDK、建立并检查真实 npm link，再构建应用。确认应用始终通过包名和公开 `style.css` 使用 `dist`。
 
-## 0.3.4 打包与发布
+验收安装包时，先记录宿主 manifest、锁文件和链接状态，在 `apps/viewer-host` 中执行 `npm install <tgz绝对路径> --no-save --package-lock=false --no-audit --no-fund`。确认已安装目录不再链接到 SDK、版本正确，再直接在该应用目录执行 `npm run build` 和预览命令。此阶段不要运行宿主根目录的 `npm run check`、`npm run build` 或 `npm run dev`，这些命令会重建并恢复 npm link，导致实际验证对象变化。临时安装使用宿主既有 npm 缓存和链接区配置，不修改用户全局配置。
 
-确认包配置与锁文件中的版本均为 `0.3.4`，然后执行：
+安装包验收无论成功或失败，都在宿主根目录执行 `npm run link` 和 `npm run check:link` 恢复并确认链接，核对 manifest 和锁文件未变。不要用直接导入 SDK 源码的方式代替公开包入口验证。
+
+## 0.3.5 版本内容
+
+本版纳入独立缩放方法、可选 Marker 聚合、自定义聚合插槽和模型坐标视角快照，并同步组件公开声明与接入文档。聚合默认关闭、半径默认 48 CSS 像素；默认按钮外观采用固定默认值，由宿主 CSS 覆盖或插槽扩展。如果宿主曾配置开发阶段的 `--mv-cluster-*` 变量，需迁移为 CSS 覆盖，按钮尺寸不影响聚合半径。
+
+运行时入口保持 `MineViewer`、`flattenComponentTree`、`createGisPlacement`，内部缩放与聚合工厂不作为包导出。保持依赖版本和外观记录格式，清除无条件输出模型及构件数据的调试日志。`initialView` 已升级为 `ViewState`，旧的 `direction / fitPadding` 配置不再兼容；宿主未提供快照时使用自动适配。功能验收、浏览器兼容和性能范围以实际交付结果为准。
+
+## 0.3.5 打包与发布
+
+确认包配置与锁文件中的版本均为 `0.3.5`，然后执行：
 
 ```sh
 npm run check
@@ -102,7 +118,7 @@ npm pack --dry-run
 
 检查包文件列表：应仅包含完整 `dist/`、`README.md`、`API.md`、`LICENSE` 和 `package.json`。共享分块、动态插件分块及声明必须完整，源码、测试、开发指南、本机配置和验收记录不进入 npm 包。
 
-需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.3.4.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
+需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.3.5.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
 
 使用具备包发布权限的 npm 账号发布已验证的安装包：
 
@@ -112,10 +128,10 @@ npm publish <已验证安装包的绝对路径> --access public
 
 发布目标由 `publishConfig` 指向官方 npm registry，访问权限为 public。认证信息通过本机 npm 配置或发布平台提供，不写入工程。`--dry-run` 用于检查分发内容，不创建线上版本。
 
-GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发；准备版本不包含推送标签或启动工作流。提交发布内容时，确保 `src/gis/`、`src/navigation/`、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
+GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发；工作流检查 package.json 与 package-lock.json 的包名及版本一致，标签触发时还要求标签精确匹配 `v${package.version}`，不匹配则终止。准备版本不包含推送标签或启动工作流。提交发布内容时，确保 `src/gis/`、`src/navigation/`、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
 
 ## 后续版本维护
 
 根据变更选择新版本，用 `npm version <版本号> --no-git-tag-version` 同步更新包配置和锁文件；同步调整文档中的版本与安装示例，重新执行检查、打包和实际消费验证。npm 已发布的同名同版本不可覆盖。
 
-保持三个运行时导出及已声明包子路径的稳定性。功能或限制变化时，同时核对 Props、事件、插槽、实例方法和公开类型。实际支持范围与已知问题统一维护在 [API 文档](./API.md#troubleshooting)。
+保持三个运行时导出及已声明包子路径的稳定性。功能或限制变化时，同时核对 Props、事件、插槽、实例方法和公开类型；当前 `ViewerApi` 包含 23 个实例方法，视角快照不新增实时事件。实际支持范围与已知问题统一维护在 [API 文档](./API.md#troubleshooting)。

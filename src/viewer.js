@@ -16,7 +16,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
 import { createSelection } from './selection.js'
-import { createCameraMotion, createPointView } from './camera-motion.js'
+import { createCameraMotion, createPointView, createClusterView } from './camera-motion.js'
+import { createCameraZoom } from './camera-zoom.js'
+import { createCameraView, getCameraViewState, validateViewState } from './camera-view-state.js'
 import { createCameraNavigation } from './navigation/camera-navigation.js'
 import { projectMarkers } from './markers.js'
 import { createImageryPlan } from './gis/projection.js'
@@ -44,8 +46,9 @@ export function createViewer(
   controls.enableDamping = true
   controls.dampingFactor = 0.09
   const motion = createCameraMotion(camera, controls)
+  const zoom = createCameraZoom(camera, controls, motion)
   const navigation = createCameraNavigation(camera, controls, motion)
-  controls.addEventListener('start', motion.cancel)
+  controls.addEventListener('start', startInteraction)
   scene.add(new HemisphereLight('#e5efff', '#758096', 2.6))
   const key = new DirectionalLight('#fff2dc', 2.7)
   key.position.set(3, 6, 5)
@@ -66,7 +69,31 @@ export function createViewer(
     height = 0,
     frame = 0,
     destroyed = false
-  let initialView = {}
+  let initialView
+  let viewWarning
+  let overlayDirty = true,
+    projectedOverlay,
+    lastCameraMatrix,
+    lastProjectionMatrix,
+    clusterOperation
+  const markerSignature = (marker) =>
+    JSON.stringify([
+      marker.modelPosition.x,
+      marker.modelPosition.y,
+      marker.modelPosition.z,
+      marker.screenOffset?.x || 0,
+      marker.screenOffset?.y || 0,
+    ])
+  function startInteraction() {
+    motion.cancel()
+    zoom.clearPending()
+    clusterOperation = undefined
+  }
+  function cancelClusterFocus() {
+    if (!clusterOperation) return
+    motion.cancel()
+    clusterOperation = undefined
+  }
   let imagery
   let imageryIdentity = ''
   let terrainHeightTransform
@@ -100,6 +127,7 @@ export function createViewer(
     if (destroyed) return
     const moving = motion.update(now)
     controls.update()
+    camera.updateMatrixWorld(true)
     if (
       navigationVisible &&
       current &&
@@ -115,10 +143,44 @@ export function createViewer(
       if (active) composer.render()
       else renderer.render(scene, camera)
     })
-    if (current && components && appearance)
-      onOverlay(
-        projectMarkers(markers, components, appearance, current.offset, camera, width, height),
+    // GIS 瓦片完成也会请求渲染；相机和标记未变时复用投影，避免重复聚合。
+    if (
+      current &&
+      components &&
+      appearance &&
+      (overlayDirty ||
+        !lastCameraMatrix?.equals(camera.matrixWorld) ||
+        !lastProjectionMatrix?.equals(camera.projectionMatrix))
+    ) {
+      overlayDirty = false
+      lastCameraMatrix = camera.matrixWorld.clone()
+      lastProjectionMatrix = camera.projectionMatrix.clone()
+      projectedOverlay = projectMarkers(
+        markers,
+        components,
+        appearance,
+        current.offset,
+        camera,
+        width,
+        height,
       )
+      if (clusterOperation) {
+        const live = new Map(projectedOverlay.markers.map((marker) => [marker.id, marker]))
+        if (
+          [...clusterOperation.signatures].some(
+            ([id, signature]) => !live.has(id) || markerSignature(live.get(id)) !== signature,
+          )
+        )
+          cancelClusterFocus()
+      }
+      onOverlay(projectedOverlay)
+    }
+    // 完成回调在最终投影通知之后运行，界面可据实际分组决定是否回退成员列表。
+    if (clusterOperation?.completed) {
+      const completed = clusterOperation
+      clusterOperation = undefined
+      completed.onComplete()
+    }
     if (moving) invalidate()
   }
   controls.addEventListener('change', invalidate)
@@ -127,6 +189,8 @@ export function createViewer(
     if (!rect.width || !rect.height || (rect.width === width && rect.height === height)) return
     width = rect.width
     height = rect.height
+    overlayDirty = true
+    cancelClusterFocus()
     renderer.setSize(width, height, false)
     composer.setSize(width, height)
     camera.aspect = width / height
@@ -141,6 +205,8 @@ export function createViewer(
     event.preventDefault()
     contextAvailable = false
     motion.cancel()
+    zoom.clearPending()
+    clusterOperation = undefined
     if (!destroyed) onContextLost()
   }
   renderer.domElement.addEventListener('webglcontextlost', contextLost)
@@ -153,7 +219,17 @@ export function createViewer(
     }
     const radius = Math.max(box.getSize(new Vector3()).length() / 2, 0.01),
       center = box.getCenter(new Vector3())
-    const input = initialView.direction || { x: 1.15, y: 0.72, z: 1.35 }
+    if (reset && initialView !== undefined) {
+      const view = createCameraView(camera, controls, current, initialView)
+      if (view) {
+        const accepted = motion.moveTo(view, options)
+        if (accepted) invalidate()
+        if (accepted) clusterOperation = undefined
+        return accepted
+      }
+      viewWarning = 'initialView 不是有效的 ViewState，已回退为自动适配视角'
+    }
+    const input = { x: 1.15, y: 0.72, z: 1.35 }
     let direction = reset
       ? new Vector3(input.x, input.y, input.z)
       : camera.position.clone().sub(controls.target)
@@ -164,10 +240,7 @@ export function createViewer(
       (camera.fov * Math.PI) / 180,
       2 * Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect),
     )
-    const padding =
-      Number.isFinite(initialView.fitPadding) && (initialView.fitPadding || 0) > 0
-        ? initialView.fitPadding
-        : 1.35
+    const padding = 1.35
     const distance = (radius / Math.tan(fov / 2)) * padding
     const accepted = motion.moveTo(
       {
@@ -181,13 +254,25 @@ export function createViewer(
       options,
     )
     if (accepted) invalidate()
+    if (accepted) clusterOperation = undefined
+    return accepted
+  }
+  function zoomView(method, options) {
+    if (!current || destroyed || !contextAvailable) return false
+    const accepted = zoom[method](options)
+    if (accepted) {
+      clusterOperation = undefined
+      invalidate()
+    }
     return accepted
   }
   return {
     setBackground(options) {
       background.set(options)
     },
-    show(model, index, state, view = {}) {
+    show(model, index, state, view) {
+      cancelClusterFocus()
+      overlayDirty = true
       clearImagery()
       onGisStatus({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
       onTerrainStatus?.({ status: 'disabled', mode: 'relative', loaded: 0, failed: 0, total: 0 })
@@ -197,10 +282,12 @@ export function createViewer(
       components = index
       appearance = state
       initialView = view
+      viewWarning = undefined
       lastOrientation = undefined
       scene.add(model.root)
       renderer.renderLists.dispose()
       fit(model.root, true, { duration: 0 })
+      return viewWarning
     },
     setGis(options) {
       if (destroyed) return
@@ -282,8 +369,43 @@ export function createViewer(
       }
     },
     setMarkers(values) {
+      cancelClusterFocus()
       markers = values
+      overlayDirty = true
       invalidate()
+    },
+    cancelClusterFocus,
+    focusCluster(members, radius, options, onComplete) {
+      if (!current || destroyed || !contextAvailable) return false
+      const view = createClusterView(
+        camera,
+        controls,
+        current,
+        members,
+        radius,
+        width,
+        height,
+        options,
+      )
+      if (!view) return false
+      motion.cancel()
+      const operation = {
+        signatures: new Map(members.map((marker) => [marker.id, markerSignature(marker)])),
+        onComplete,
+        completed: false,
+      }
+      clusterOperation = operation
+      const accepted = motion.moveTo(view, options, {
+        onComplete: () => {
+          if (clusterOperation === operation) operation.completed = true
+        },
+        onCancel: () => {
+          if (clusterOperation === operation) clusterOperation = undefined
+        },
+      })
+      if (!accepted) clusterOperation = undefined
+      else invalidate()
+      return accepted
     },
     select(object) {
       selection.select(object)
@@ -297,9 +419,26 @@ export function createViewer(
       const view = createPointView(camera, controls, current, point, options)
       if (!view) return false
       const accepted = motion.moveTo(view, options)
+      if (accepted) clusterOperation = undefined
       if (accepted) invalidate()
       return accepted
     },
+    getViewState() {
+      if (!current || destroyed || !contextAvailable) return null
+      return getCameraViewState(camera, controls, current.offset)
+    },
+    setViewState(value, options) {
+      if (!current || destroyed || !contextAvailable || !validateViewState(value)) return false
+      const view = createCameraView(camera, controls, current, value)
+      if (!view) return false
+      zoom.clearPending()
+      clusterOperation = undefined
+      const accepted = motion.moveTo(view, options)
+      if (accepted) invalidate()
+      return accepted
+    },
+    zoomIn: (options) => zoomView('zoomIn', options),
+    zoomOut: (options) => zoomView('zoomOut', options),
     reset(options) {
       return current && !destroyed && contextAvailable ? fit(current.root, true, options) : false
     },
@@ -312,12 +451,14 @@ export function createViewer(
     setViewDirection(direction, options) {
       if (!current || destroyed || !contextAvailable) return false
       const accepted = navigation.setViewDirection(direction, options)
+      if (accepted) clusterOperation = undefined
       if (accepted) invalidate()
       return accepted
     },
     navigate(direction, options) {
       if (!current || destroyed || !contextAvailable) return false
       const accepted = navigation.navigate(direction, options)
+      if (accepted) clusterOperation = undefined
       if (accepted) invalidate()
       return accepted
     },
@@ -349,17 +490,23 @@ export function createViewer(
         })?.object || null
       )
     },
-    refresh: invalidate,
+    refresh() {
+      overlayDirty = true
+      invalidate()
+    },
     dispose() {
       // 此处只释放视窗资源；模型与外观材质由 Vue 适配层按顺序交给各模块释放。
       destroyed = true
+      clusterOperation = undefined
+      projectedOverlay = undefined
       motion.cancel()
+      zoom.dispose()
       clearImagery()
       background.dispose()
       cancelAnimationFrame(frame)
       observer.disconnect()
       controls.removeEventListener('change', invalidate)
-      controls.removeEventListener('start', motion.cancel)
+      controls.removeEventListener('start', startInteraction)
       controls.dispose()
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       selection.dispose()

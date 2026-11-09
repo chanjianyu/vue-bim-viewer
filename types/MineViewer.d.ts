@@ -6,8 +6,11 @@ import type {
   CameraTransitionOptions,
   ComponentNode,
   ComponentTree,
-  InitialView,
+  ViewState,
   Marker,
+  MarkerClusteringOptions,
+  MarkerClusterInfo,
+  MarkerClusterSlotProps,
   ModelInfo,
   ModelSource,
   NavigationOptions,
@@ -18,7 +21,8 @@ import type {
 type Props = {
   modelSource: ModelSource
   markers?: Marker[]
-  initialView?: InitialView
+  markerClustering?: MarkerClusteringOptions
+  initialView?: ViewState
   cameraTransition?: CameraTransitionOptions
   gis?: GisOptions
   background?: BackgroundOptions
@@ -32,6 +36,7 @@ type Events = {
   'component-select': (component: ComponentNode | null) => void
   'appearance-change': (event: AppearanceEvent) => void
   'marker-click': (marker: Marker) => void
+  'marker-cluster-click': (cluster: MarkerClusterInfo) => void
   'gis-status': (status: GisStatus) => void
   'terrain-status': (status: TerrainStatus) => void
   'background-error': (error: { message: string }) => void
@@ -39,6 +44,7 @@ type Events = {
 
 type Slots = {
   marker(props: { marker: ProjectedMarker; selected: boolean }): unknown
+  'marker-cluster'(props: MarkerClusterSlotProps): unknown
   'marker-popup'(props: { marker: ProjectedMarker; close: () => void }): unknown
 }
 

@@ -1,18 +1,19 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.3.4**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.3.5**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
 ## 功能
 
-- **模型浏览**：Manifest 资源加载、旋转、缩放、平移、构件/XYZ 坐标定位与平滑视角过渡。
+- **模型浏览**：Manifest 资源加载、旋转、滚轮及 `zoomIn()` / `zoomOut()` 缩放、平移、构件/XYZ 坐标定位与平滑视角过渡。
 - **视角导航**：Home 与切角骰子，支持面、边、角共 26 个方向，宿主可分别控制显隐。
 - **构件访问**：保留源场景父子结构，查询构件树、元数据、包围盒和模型空间锚点。
 - **构件目录**：左上角内置可搜索构件树，支持整组显隐、两档透明切换、选中定位及与宿主外观同步。
 - **构件选择**：内置青绿色表面高亮与浅绿色细轮廓，支持三维点击、构件树及 API 选择；不需要宿主配置。
 - **外观管理**：显隐、颜色、不透明/半透明两档状态、批量修改，以及外观差异的导出、合并导入和恢复。
 - **业务标记**：模型坐标或构件锚点定位，支持自定义标签与弹窗插槽。
+- **标记聚合**：可选按屏幕距离聚合，点击拉近；重合或无法拆分时显示分页成员列表，默认关闭。
 - **场景背景**：响应式背景颜色与静态图片，居中等比裁剪，加载失败回退纯色。
 - **GIS 配准**：三点及多点局部配准、误差报告和坐标转换。
 - **地图与地形**：通过 three-tile 加载有限范围的天地图影像，可选 DEM 相对预览或真实高程对齐。
@@ -24,7 +25,7 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.4
+npm install @caojinyu111/vue-bim-viewer@0.3.5
 ```
 
 Vue **3.5.43** 和 Three.js **0.183.1** 是精确版本的共享 peerDependencies；npm 7+ 在宿主未安装时会自动补齐，保持单实例。three-tile **0.12.2** 与 GIS 投影依赖随 SDK 安装，three-tile 随 SDK 构建。
@@ -119,7 +120,7 @@ const navigation = reactive({ home: true, cube: true, componentTree: true })
 </template>
 ```
 
-未传配置或字段时默认显示。Home 调用 `resetView()`，按 `initialView` 恢复全模型视角；骰子跟随主相机旋转，点击六面、十二条边或八个角时保留当前观察中心及距离。宿主也可调用 `viewer.value.setViewDirection('top', { duration: 400 })` 切换六个标准方向。方向切换默认沿用 `cameraTransition`；`duration: 0` 为立即切换。
+未传配置或字段时默认显示。Home 调用 `resetView()`，按 `initialView` 快照恢复视角；未设置快照时自动适配全模型。骰子跟随主相机旋转，点击六面、十二条边或八个角时保留当前观察中心及距离。宿主也可调用 `viewer.value.setViewDirection('top', { duration: 400 })` 切换六个标准方向。方向切换默认沿用 `cameraTransition`；`duration: 0` 为立即切换。
 
 构件目录默认收起，仅显示模型的实际构件层级。搜索名称会保留匹配路径，不改变场景显隐。复选框作用于完整分支：取消勾选隐藏整组，勾选显示整组及此前单独隐藏的子构件；部分显示时呈半选状态。点击名称使用内置效果选中并按当前观察方向定位；隐藏构件保持隐藏，空节点只选中并提示没有可定位几何。目录显隐修改沿用 `appearance-change` 事件和外观差异保存机制。
 
@@ -138,6 +139,35 @@ viewer.value.focusPoint({ x: 100, y: 20, z: -50 }, { duration: 0 }) // 立即定
 ```
 
 目标点移到视窗中心并成为后续旋转中心；可选 `distance` 为有限正数，单位沿用模型。时长沿用 `cameraTransition`，单次 `duration` 优先。允许模型内部及包围盒外的点，不自动处理几何遮挡。返回 `true` 表示接受操作；无效参数、未就绪、销毁或上下文丢失返回 `false`，不打断有效动画。详见 [API 定位说明](./API.md#viewer-api)。
+
+## 视角快照
+
+`getViewState()` 返回当前实际视角的模型坐标快照，包含 `position`、`target` 和 `up`。宿主可以保存这个普通对象，并在下一次挂载时直接传给 `initialView`：
+
+```js
+const savedView = viewer.value.getViewState()
+// 保存 savedView 后，下次挂载：
+// <MineViewer :initial-view="savedView" />
+
+viewer.value.setViewState(savedView, { duration: 0 })
+```
+
+0.3.5 起 `initialView` 只接受 `ViewState`，旧的 `direction / fitPadding` 配置不再支持。省略 `initialView` 时 SDK 自动适配；视角快照使用原模型坐标，宿主应按模型 `modelId` 和 `revision` 管理保存记录。
+
+## 视角缩放
+
+宿主通过组件 ref 调用独立封装的缩放能力，可自行提供按钮：
+
+```js
+viewer.value.zoomIn()
+viewer.value.zoomOut()
+viewer.value.zoomIn({ factor: 1.5, duration: 200 })
+viewer.value.zoomOut({ duration: 0 })
+```
+
+缩放围绕当前观察中心并保持方向，默认倍率 `1.2`；放大时相机距离除以倍率，缩小时乘以倍率。`factor` 必须为有限且大于 `1` 的数值。时长优先取单次 `duration`，其次为 `cameraTransition.duration`，均未设置时默认 `300ms`；`0` 或系统减少动态效果设置下即时完成。
+
+连续点击累计目标距离，滚轮、拖动或其他相机操作接管时清除旧目标。缩放遵守当前距离边界；非法参数、不可用或已达对应边界返回 `false`，不打断有效动画。返回 `true` 仅表示接受请求。公开类型为 `ZoomOptions`，完整规则见 [API 实例方法](./API.md#viewer-api)。
 
 ## 天地图影像与 DEM
 
@@ -160,6 +190,53 @@ const gis = {
 
 影像与地形分别通过 `gis-status`、`terrain-status` 报告加载结果，DEM 缺测瓦片保留平面影像。地图覆盖模型水平范围外扩 1000 米后的瓦片区域，优先 16 级、最多 256 张，不随相机缩放切换精度，不支持无限漫游、注记或地形碰撞。完整配置和服务限制见 [API 地图说明](./API.md#gis-terrain)。
 
+## Marker 聚合
+
+聚合默认关闭，可通过宿主配置启用，半径使用 CSS 像素并支持动态调整：
+
+```vue
+<MineViewer
+  :model-source="modelSource"
+  :markers="markers"
+  :marker-clustering="{ enabled: true, radius: 48 }"
+/>
+```
+
+点击数量按钮尝试保持方向拉近；坐标重合或无法拆分时显示分页成员列表，选择成员继续使用原有 Marker 弹窗。聚合按包含屏幕偏移的显示位置计算，不区分业务类型或楼层，不处理模型遮挡与标签矩形重叠。详细规则及 `marker-cluster-click` 事件见 [API Marker 说明](./API.md#markers)。
+
+通过 `marker-cluster` 插槽自定义聚合标签，SDK 继续负责定位、鼠标点击和默认成员列表：
+
+```vue
+<MineViewer
+  :model-source="modelSource"
+  :markers="markers"
+  :marker-clustering="{ enabled: true }"
+>
+  <template #marker-cluster="{ cluster, disabled, expanded }">
+    <span
+      class="business-cluster"
+      :class="{
+        alarm: cluster.members.some(member => member.data?.status === 'alarm'),
+        disabled,
+        expanded,
+      }"
+    >
+      {{ cluster.count }} 个点位
+    </span>
+  </template>
+</MineViewer>
+```
+
+`cluster.members` 提供只读的 `id`、`label`、`data` 视图；业务变化通过原始 `markers` 更新。插槽位于 SDK 按钮内部，请使用展示元素或组件，不嵌套按钮、链接或输入框，也无需再次绑定定位。未提供插槽时保留默认数量圆点；默认皮肤可通过宿主 CSS 覆盖配色和尺寸，图标及业务内容可通过自定义插槽实现；按钮尺寸不影响聚合半径，详见 [插槽及样式契约](./API.md#cluster-slot)。
+
+## 0.3.5 变化与接入注意事项
+
+- 提供 `zoomIn()` / `zoomOut()` 实例方法，支持倍率、过渡时长和连续调用，宿主自行提供缩放按钮。
+- 提供可选 Marker 聚合、分页成员列表和 `marker-cluster` 展示插槽；聚合默认关闭，默认半径为 48 CSS 像素。
+- 聚合默认外观通过 CSS 覆盖，自定义内容通过插槽。如果宿主曾配置开发阶段的 `--mv-cluster-*` 变量，请迁移为 CSS 覆盖；0.3.5 不读取这些变量。其他功能的 CSS 变量保持不变。
+
+完整参数、默认值和调用约束见 [API 文档](./API.md)。
+
 ## 使用要求
 
 | 项目     | 要求                                |
@@ -175,7 +252,7 @@ IFC、RVT 等源 BIM 文件需先转换为支持的 GLB/glTF。基础模型显�
 
 ## 文档
 
-[API 使用文档](./API.md) 包含全部 7 项 Props、18 个实例方法、9 个事件、2 个插槽、工具函数、数据结构及接入示例。
+[API 使用文档](./API.md) 包含全部 8 项 Props、23 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
 
 维护者可在源码仓库中查阅 `DEVELOPMENT.md`，了解构建、宿主联调和发布流程；该文件不包含在 npm 分发包中。
 
