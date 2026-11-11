@@ -15,15 +15,19 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
-import { createSelection } from './selection.js'
-import { createCameraMotion, createPointView, createClusterView } from './camera-motion.js'
-import { createCameraZoom } from './camera-zoom.js'
-import { createCameraZoomLimit } from './camera-zoom-limit.js'
-import { createCameraView, getCameraViewState, validateViewState } from './camera-view-state.js'
-import { createCameraNavigation } from './navigation/camera-navigation.js'
-import { projectMarkers } from './markers.js'
-import { createImageryPlan } from './gis/projection.js'
-import { createImageryLayer } from './gis/layer.js'
+import { createSelection } from '../model/selection.js'
+import { createCameraMotion, createPointView, createClusterView } from '../camera/camera-motion.js'
+import { createCameraZoom } from '../camera/camera-zoom.js'
+import { createCameraZoomLimit } from '../camera/camera-zoom-limit.js'
+import {
+  createCameraView,
+  getCameraViewState,
+  validateViewState,
+} from '../camera/camera-view-state.js'
+import { createCameraNavigation } from '../camera/navigation/camera-navigation.js'
+import { projectMarkers } from '../markers/markers.js'
+import { createImageryPlan } from '../gis/projection.js'
+import { createImageryLayer } from '../gis/layer.js'
 
 /** 一个 Viewer 管理自己的 GPU、相机、选择效果及可选影像层；不包含矿山业务数据。 */
 export function createViewer(

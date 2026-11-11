@@ -1,5 +1,5 @@
 import { Vector3 } from 'three'
-import { point3 } from './components.js'
+import { point3 } from '../model/components.js'
 
 /** 真实渲染和聚合拉近预测共用投影，包含 CSS 偏移与相机前后/裁剪检查。 */
 export function projectMarkerPosition(modelPosition, screenOffset, offset, camera, width, height) {

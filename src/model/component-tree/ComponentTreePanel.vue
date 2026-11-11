@@ -1,12 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, useId, watch } from 'vue'
-import SvgIcon from '../SvgIcon.vue'
-import componentTreeIcon from '../assets/svg/component-tree.svg?raw'
-import closeIcon from '../assets/svg/close.svg?raw'
-import searchIcon from '../assets/svg/search.svg?raw'
-import chevronRightIcon from '../assets/svg/chevron-right.svg?raw'
-import componentIcon from '../assets/svg/component.svg?raw'
-import componentSolidIcon from '../assets/svg/component-solid.svg?raw'
+import SvgIcon from '../../shared/SvgIcon.vue'
+import componentTreeIcon from '../../assets/svg/component-tree.svg?raw'
+import closeIcon from '../../assets/svg/close.svg?raw'
+import searchIcon from '../../assets/svg/search.svg?raw'
+import chevronRightIcon from '../../assets/svg/chevron-right.svg?raw'
+import componentIcon from '../../assets/svg/component.svg?raw'
+import componentSolidIcon from '../../assets/svg/component-solid.svg?raw'
 import { indexTree, searchTree, visibilityStates, visibleRows } from './tree-state.js'
 
 const props = defineProps({

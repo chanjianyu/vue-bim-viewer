@@ -19,29 +19,28 @@ npm run check
 | --------------------- | ------------------------------------------------------- |
 | `src/index.js`        | 公开运行入口和样式导入                                  |
 | `src/MineViewer.vue`  | JavaScript Vue 组件、Props、事件、插槽及实例方法        |
-| `src/*.js`            | 渲染、模型、构件、外观、相机、背景、Marker、GIS 与影像  |
-| `src/camera-zoom.js` | 每 Viewer 独立的缩放目标、参数与边界计算，复用相机动画 |
-| `src/camera-zoom-limit.js` | 模型自适应用户缩小上限与滚轮边界夹取，不作为公开导出 |
-| `src/marker-clustering.js` / `src/MarkerClusters.vue` | 屏幕距离聚合、默认数量按钮、自定义展示和分页成员列表 |
-| `src/selection.js`    | 内置选中填色、轮廓和临时材质生命周期                    |
-| `src/gis/`            | 地图坐标适配、three-tile 图层、DEM 数据与网格、请求预算 |
-| `src/navigation/`     | Home、26 方向骰子及相机方向同步                         |
-| `src/component-tree/` | 独立构件目录组件、搜索与展开、显隐三态及两档透明按钮    |
+| `src/core/`           | 场景、渲染调度、模块协调及背景纹理生命周期              |
+| `src/model/`          | 模型加载与释放、构件索引和锚点、外观状态及选择效果      |
+| `src/model/component-tree/` | 构件目录组件、搜索与展开、显隐三态及两档透明按钮 |
+| `src/camera/`         | 相机动画、定位、视角快照、缩放及用户缩小上限            |
+| `src/camera/navigation/` | Home、26 方向骰子及相机方向同步                     |
+| `src/markers/`        | Marker 投影、屏幕距离聚合、聚合标签及分页成员列表       |
+| `src/gis/`            | 控制点配准、地图坐标适配、影像图层、DEM 与请求预算      |
+| `src/shared/`         | 导航与构件目录共用的基础组件                            |
 | `src/assets/svg/`     | Home、构件目录及面板使用的静态 SVG 图标                 |
-| `src/SvgIcon.vue`     | 内部装饰图标组件，显示本地 SVG 原始内容                 |
 | `src/style.css`       | 组件样式                                                |
 | `types/`              | 公开 `.d.ts`，包括组件、数据结构与 GIS 声明             |
 | `scripts/`            | 构建时复制公开声明                                      |
 | `AGENTS.md`           | 后续开发与统一宿主验证约定                              |
 | `dist/`               | 自动生成的 ESM、CJS、CSS 与声明文件                     |
 
-修改源码和 `types/`，通过构建生成 `dist/`。修改公开接口时，应同步更新运行实现、独立声明、文档及宿主接入。
+修改源码和 `types/`，通过构建生成 `dist/`。源码按功能归类，Vue 组件和配套 JS 放在同一功能目录；公共样式保留统一入口。GIS 控制点配准位于 `src/gis/placement.js`。这些目录均为内部实现，宿主继续通过公开包入口和 `style.css` 接入。修改公开接口时，应同步更新运行实现、独立声明、文档及宿主接入。
 
-静态图标保存在 `src/assets/svg/`，通过 `import icon from '../assets/svg/home.svg?raw'` 导入，并交给内部 `SvgIcon` 的 `source` 属性显示。仅使用可信的本地 SVG，不传入外部 HTML。保留各图标的 `viewBox`，由调用组件的 CSS 控制尺寸、填充、描边及 `currentColor`；局部填充直接写在 SVG 路径属性中。按钮负责事件、焦点和无障碍名称，图标仅作装饰。动态方向骰子保留 `ViewCube.vue` 中的 SVG 模板，以支持相机同步和方向交互。SVG 内容会内嵌到 ESM/CJS 产物，宿主无需配置资源路径，也不额外请求图标文件。
+静态图标保存在 `src/assets/svg/`，例如在 `src/camera/navigation/HomeButton.vue` 中通过 `import icon from '../../assets/svg/home.svg?raw'` 导入，并交给 `src/shared/SvgIcon.vue` 组件 的 `source` 属性显示。仅使用可信的本地 SVG，不传入外部 HTML。保留各图标的 `viewBox`，由调用组件的 CSS 控制尺寸、填充、描边及 `currentColor`；局部填充直接写在 SVG 路径属性中。按钮负责事件、焦点和无障碍名称，图标仅作装饰。动态方向骰子保留 `ViewCube.vue` 中的 SVG 模板，以支持相机同步和方向交互。SVG 内容会内嵌到 ESM/CJS 产物，宿主无需配置资源路径，也不额外请求图标文件。
 
 构件目录只持有模型树快照、搜索与展开状态，通过外观查询和变更计数同步三态。显隐操作批量提交给已有 appearance 实例；选择共用 `selectComponent`，目录名称点击再组合定位。隐藏构件不自动显示，空节点不移动相机；公开 API 的单独选择和原点定位行为保持独立。`navigation.componentTree` 默认 true，关闭只隐藏目录界面。验证时覆盖与宿主自有树和外观面板的交叉操作，以及隐藏祖先下单独显示子分支、模型重载、窄屏鼠标操作和原生控件焦点顺序。
 
-构件透明状态集中在 appearance.js 管理。每个几何节点只保存自身 translucent 布尔覆盖，材质按原不透明度乘 0.5 或 1；父级仅汇总完整分支，隐藏构件计入，透明状态不沿祖先继承。公共设置扩展整个分支，批量按输入顺序，changedIds 只列批末自身覆盖净变化，最多发一次事件。恢复构件时整组不透明，颜色和显隐仅恢复本节点。外观记录 schemaVersion 为 2，导入精确节点覆盖，不重复扩展分支；不支持记录静默忽略。构件树 schemaVersion 为 1。关闭目录保留状态，成功模型重载重新创建外观实例，失败保留当前实例，持久化由宿主自行实现。
+构件透明状态集中在 `src/model/appearance.js` 管理。每个几何节点只保存自身 translucent 布尔覆盖，材质按原不透明度乘 0.5 或 1；父级仅汇总完整分支，隐藏构件计入，透明状态不沿祖先继承。公共设置扩展整个分支，批量按输入顺序，changedIds 只列批末自身覆盖净变化，最多发一次事件。恢复构件时整组不透明，颜色和显隐仅恢复本节点。外观记录 schemaVersion 为 2，导入精确节点覆盖，不重复扩展分支；不支持记录静默忽略。构件树 schemaVersion 为 1。关闭目录保留状态，成功模型重载重新创建外观实例，失败保留当前实例，持久化由宿主自行实现。
 
 实心与空心正方体保存在 assets/svg，以公开查询的 effective.translucent 驱动，不维护独立缓存。验证应覆盖父网格含子网格、混合分支、重叠批量、精确导入、原材质透明、无变化事件及宿主双向同步。
 
@@ -131,7 +130,7 @@ npm publish <已验证安装包的绝对路径> --access public
 
 发布目标由 `publishConfig` 指向官方 npm registry，访问权限为 public。认证信息通过本机 npm 配置或发布平台提供，不写入工程。`--dry-run` 用于检查分发内容，不创建线上版本。
 
-GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发；工作流检查 package.json 与 package-lock.json 的包名及版本一致，标签触发时还要求标签精确匹配 `v${package.version}`，不匹配则终止。准备版本不包含推送标签或启动工作流。提交发布内容时，确保 `src/gis/`、`src/navigation/`、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
+GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发；工作流检查 package.json 与 package-lock.json 的包名及版本一致，标签触发时还要求标签精确匹配 `v${package.version}`，不匹配则终止。准备版本不包含推送标签或启动工作流。提交发布内容时，确保 `src/core/`、`src/model/`、`src/camera/`、`src/markers/`、`src/gis/`、`src/shared/`、资源、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
 
 ## 后续版本维护
 

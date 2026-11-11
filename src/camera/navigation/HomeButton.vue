@@ -1,6 +1,6 @@
 <script setup>
-import SvgIcon from '../SvgIcon.vue'
-import homeIcon from '../assets/svg/home.svg?raw'
+import SvgIcon from '../../shared/SvgIcon.vue'
+import homeIcon from '../../assets/svg/home.svg?raw'
 
 defineProps({ disabled: { type: Boolean, default: false } })
 defineEmits(['home'])

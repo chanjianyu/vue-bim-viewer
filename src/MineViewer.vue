@@ -1,15 +1,20 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { loadModel } from './model.js'
-import { cloneComponent, cloneComponentTree, createComponents, sceneTree } from './components.js'
-import { createAppearance } from './appearance.js'
-import { createViewer } from './viewer.js'
-import CameraNavigation from './navigation/CameraNavigation.vue'
-import { resolveNavigation } from './navigation/view-cube.js'
-import ComponentTreePanel from './component-tree/ComponentTreePanel.vue'
-import { indexTree, visibilityUpdates } from './component-tree/tree-state.js'
-import MarkerClusters from './MarkerClusters.vue'
-import { createMarkerClustering, resolveMarkerClustering } from './marker-clustering.js'
+import { loadModel } from './model/model.js'
+import {
+  cloneComponent,
+  cloneComponentTree,
+  createComponents,
+  sceneTree,
+} from './model/components.js'
+import { createAppearance } from './model/appearance.js'
+import { createViewer } from './core/viewer.js'
+import CameraNavigation from './camera/navigation/CameraNavigation.vue'
+import { resolveNavigation } from './camera/navigation/view-cube.js'
+import ComponentTreePanel from './model/component-tree/ComponentTreePanel.vue'
+import { indexTree, visibilityUpdates } from './model/component-tree/tree-state.js'
+import MarkerClusters from './markers/MarkerClusters.vue'
+import { createMarkerClustering, resolveMarkerClustering } from './markers/marker-clustering.js'
 
 const props = defineProps({
   modelSource: { type: Object, required: true },
