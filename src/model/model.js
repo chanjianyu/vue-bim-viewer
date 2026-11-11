@@ -181,6 +181,8 @@ export async function loadModel(source, signal, progress) {
     })
     progress('正在解析模型')
     gltf = await new GLTFLoader(manager).parseAsync(bytes.buffer, new URL('./', modelUrl).href)
+    console.log('模型加载结果', gltf)
+    console.log('顶层节点数组', gltf.scene.children)
     signal.throwIfAborted()
     const scene = gltf.scene
     const root = new Group()

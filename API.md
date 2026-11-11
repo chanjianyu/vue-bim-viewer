@@ -36,6 +36,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 场景查询   | 源场景结构快照、活的 Three.js 根节点、对象对应 ID               | `getSceneTree()` 等                              |
 | 构件交互   | 三维拾取、按 ID 选择、青绿色高亮与细轮廓、相机定位、清除选择    | `selectComponent()`、`focusComponent()`          |
 | 锚点查询   | 对象原点、包围盒中心、包围盒 Y 轴顶部                           | `getComponentAnchor()`                           |
+| 构件连接线 | 有序构件空间折线、每段方向箭头、可选循环光点、多线替换删除与独立样式 | `setConnectionLine()`、`removeConnectionLine()`、`clearConnectionLines()` |
 | 外观控制   | 显隐、两档透明、颜色、批量设置及状态同步                          | `setComponentAppearance()` 等                    |
 | 差异与恢复 | 当前净差异、合并导入、恢复单节点或全部覆盖                      | `getAppearanceChanges()` 等                      |
 | 标签       | 原始模型坐标点、构件锚点、模型偏移、屏幕偏移                    | `markers`                                        |
@@ -513,6 +514,14 @@ function onBackgroundError(error) {
 
 `ViewDirection` 为 `'top' | 'bottom' | 'left' | 'right' | 'front' | 'back'`。例如 `viewer.value.setViewDirection('front', { duration: 0 })` 立即切到前视角。其余 20 个边角方向仅由内置骰子触发，不属于公开参数。
 
+连接线方法：
+
+| 方法 | 输入 | 返回值与边界 |
+| --- | --- | --- |
+| `setConnectionLine(options)` | `ConnectionLineOptions` | `ConnectionLineResult`；失败保留原线，模型未就绪、上下文丢失或销毁时拒绝，不排队 |
+| `removeConnectionLine(id)` | 非空线 ID | 删除已有线返回 `true`，不存在或无效 ID 返回 `false` |
+| `clearConnectionLines()` | 无 | `void`；可重复调用 |
+
 ### 5.2 构件树、节点和版本
 
 `ComponentTree` 的结构：
@@ -657,6 +666,64 @@ function inspectScene(api) {
 三维点击可以选择构件，点击空白清除选择；拖动旋转与点击通过移动距离区分。隐藏或命中源材质不可见、不透明度为 0 的构件不参与拾取。
 
 `getSceneRoot()` 返回活的 Three.js 对象，仍处于 SDK 的展示层级内。它用于只读查询，不能直接重设父节点、变换、几何或材质，也不应放入深度响应式状态或持久化为 JSON。绕过公开方法修改可能破坏构件包围盒、标签、选择和外观状态的一致性，且没有对应的公开刷新接口。
+
+<a id="connection-lines"></a>
+
+### 5.6 构件连接线、方向箭头与循环光点
+
+`setConnectionLine()` 按构件 ID 数组的顺序绘制空间折线。线 ID 与构件 ID 独立；不同线 ID 可以同时存在，同 ID 整体替换，省略的样式恢复默认值。SDK 复制输入数据，不修改或保留宿主可变配置。
+
+| `ConnectionLineOptions` 字段 | 类型 | 默认值及要求 |
+| --- | --- | --- |
+| `id` | `string` | 必填，非空字符串 |
+| `componentIds` | `string[]` | 必填，至少两个非空构件 ID，按顺序连接，不自动排序或闭合 |
+| `color` | `string` | `'#ffb347'`，只支持 `#RRGGBB` |
+| `width` | `number` | `3` CSS 像素，有限且大于 0 |
+| `opacity` | `number` | `1`，有限且在 0–1 范围内；0 同时隐藏线条、箭头和光点 |
+| `visible` | `boolean` | `true`，控制整条线、箭头和光点 |
+| `showArrows` | `boolean` | `true`，每个有效线段中间显示一个方向箭头 |
+| `flow` | `ConnectionFlowOptions` | 可选普通配置对象；默认关闭光点动画 |
+
+| `ConnectionFlowOptions` 字段 | 类型 | 默认值及要求 |
+| --- | --- | --- |
+| `enabled` | `boolean` | `false`，仅显式 `true` 开启动画 |
+| `duration` | `number` | `3000`，完整路径单圈时长（毫秒），有限且大于 0 |
+| `size` | `number` | `8`，包含柔光边缘的直径（CSS 像素），有限且大于 0 |
+| `color` | `string` | `'#ffffff'`，只支持 `#RRGGBB` |
+
+`flow` 不接受 `null`、数组、类实例或布尔值。已传字段即使在动画关闭时也完整校验；`duration: 0` 非法，关闭应使用 `enabled: false`。动画周期与相机过渡时长独立。
+
+```js
+const result = viewer.value.setConnectionLine({
+  id: 'inspection-route',
+  componentIds: ['component-a', 'component-b', 'component-c'],
+  color: '#ffb347',
+  width: 3,
+  opacity: 1,
+  visible: true,
+  showArrows: true,
+  flow: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+})
+// { success: boolean, error?: string, unknownIds: string[], invalidAnchorIds: string[] }
+if (!result.success) console.warn(result)
+
+viewer.value.removeConnectionLine('inspection-route')
+viewer.value.clearConnectionLines()
+```
+
+锚点规则与坐标：自身为 Mesh（`hasGeometry: true`）使用现有包围盒 `center`；其他节点使用自身 `origin`，不因后代存在 Mesh 改变判断。Mesh 的 `center` 包围范围仍包含后代，沿用现有锚点语义。先取得原模型坐标，再由 SDK 加展示偏移一次，宿主无需补偏移。
+
+连续重合点跳过零长度段，非连续重复点保留，例如 A→B→A。全部点重合、非法配置、未知 ID 或无效锚点会拒绝整次更新，保留原线，并返回原因；未知 ID 和无效锚点分别列在 `unknownIds` 和 `invalidAnchorIds` 中。方法不自动跳过错误节点或回退锚点。
+
+箭头位于每段空间中点，指向下一个构件，尺寸固定为长 10、宽 8 CSS 像素。相机变化时按当前投影更新方向；投影段长不足 24px、任一端点位于近裁剪面之前或方向无法辨认时不显示该段箭头。线宽和箭头尺寸不随设备像素比或模型单位改变。
+
+每条路径一个光点，按构件数组顺序沿空间折线匀速移动，各段用时与空间长度成比例，拐点不停顿、不缓动。到达终点后直接跳回起点，不生成首尾连接段；非连续重复点仍按路径经过。省略 `flow` 或 `enabled` 时保持静态线条，不创建光点。
+
+成功替换同 ID 的线条后光点进度从起点重置，失败保留旧线、光点及播放进度。旋转、缩放、定位、Home、视角恢复不重置进度。光点继承线条的 `visible`、`opacity`，独立于 `showArrows` 和箭头的 24px 隐藏阈值。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停计时和光点续帧，恢复后从暂停位置继续；减少动态效果下保留静态光点，新建光点停在起点。设置变化会动态响应，暂停期间的时间不计入下一帧。
+
+线条和箭头覆盖模型及选中轮廓，光点绘制在它们上方，DOM Marker 和弹窗继续位于其上。光点固定 CSS 像素大小，相机裁剪及视口边界正常生效；SDK 合并连接线远裁剪需求，覆盖模型范围外的空节点原点，不改变近裁剪面和控制器距离限制。连接线不参与模型索引、拾取、选择、Home 范围和用户缩小上限。构件隐藏、半透明或选中不改变线条；需要单独通过线的 `visible` 或 `opacity` 控制。
+
+成功替换模型会在通知宿主前清空旧线及光点，失败重载保留当前线条和动画。宿主保存模型身份、revision 和配置，新模型就绪后自行重新提交。启用有效光点动画时 Viewer 共享帧持续渲染；关闭、隐藏或删除最后一条有效动画后停止光点续帧，相机与 GIS 自身所需帧保留。上下文丢失后停止渲染及操作，不自动恢复。仅支持实线、静态箭头及循环光点，不提供寻路、曲线、标签、模型动画播放、点击、编辑、自动持久化或模型变换跟踪；内部模块不作为运行时包导出。
 
 <a id="appearance"></a>
 
@@ -1441,7 +1508,10 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `SceneAssociation`        | 可选 `nodes` 源节点索引，Loader 关联辅助类型，无独立查询方法           | [场景读取](#viewer-api)    |
 | `NavigationOptions`       | `home?`、`cube?`、`componentTree?`，均默认 true                        | [导航](#navigation)        |
 | `ViewDirection`           | 六个标准观察方向                                                       | [导航](#navigation)        |
-| `ViewerApi`               | 组件 ref 暴露的 23 个方法                                              | [实例方法](#viewer-api)    |
+| `ConnectionLineOptions` | 构件连接线的有序 ID 与线条、箭头及光点配置 | [连接线](#connection-lines) |
+| `ConnectionFlowOptions` | 可选循环光点的开关、单圈时长、CSS 像素直径及颜色 | [连接线](#connection-lines) |
+| `ConnectionLineResult` | 创建/替换结果、未知构件及无效锚点列表 | [连接线](#connection-lines) |
+| `ViewerApi`               | 组件 ref 暴露的 26 个方法                                              | [实例方法](#viewer-api)    |
 | `GeographicCoordinate`    | `longitude`、`latitude`、`height?`                                     | [GIS](#gis)                |
 | `SurveyCoordinate`        | `northing`、`easting`、`height?`                                       | [GIS](#gis)                |
 | `GisControlPoint<T>`      | `{ model: Point3, map: T }`，T 默认 GeographicCoordinate               | [GIS](#gis)                |
@@ -1515,13 +1585,13 @@ const {
 | 序列化 GIS 结果后无法转换坐标 | toGeographic 是函数；保存输入配置并重新调用 createGisPlacement                     |
 | 版本更新后保存记录不匹配      | revision 随资源内容变化；按模型身份和版本分区保存，不盲目复用回退 ID               |
 
-当前支持标准非压缩 GLB/glTF；没有在 Loader 中配置 Draco、KTX2、Meshopt 解码器，也不直接加载 IFC、RVT 等源 BIM 格式。当前包没有模型编辑、任意相机控制、动画播放、裁剪剖切、距离测量或业务模拟等公开能力。
+当前支持标准非压缩 GLB/glTF；没有在 Loader 中配置 Draco、KTX2、Meshopt 解码器，也不直接加载 IFC、RVT 等源 BIM 格式。当前包没有模型编辑、任意相机控制、模型动画播放、裁剪剖切、距离测量或业务模拟等公开能力；连接线可单独开启循环光点动画。
 
 Marker 使用 DOM 标签，可选屏幕距离聚合以减少同时展示的标签，默认关闭；不提供几何遮挡检测、标签避让或虚拟化，不承诺固定标签容量。GIS 方法提供定位计算，SDK 支持可选有限范围的天地图影像及 DEM 地形（见 9.11），不加载注记或其他 GIS 引擎。新增需求应先区分是接入层业务功能，还是需要扩展 SDK 的公开能力。
 
 ### 12.1 实际适用范围
 
-适合 Vue 3 网页中的静态三角网格 BIM 浏览、构件树查询、按节点选择/外观、业务标签，以及有限区域的 GIS 配准、天地图影像与 DEM 地形。IFC/RVT 等需要先在外部转换成标准非压缩 GLB/glTF。没有配置 Draco、KTX2、Meshopt 解码器；动画、编辑、测量、剖切不在当前公开能力内。InstancedMesh 按对象视为一个构件，不支持逐实例拾取与外观。Line/Points 不属于完整支持的构件外观与包围盒对象。
+适合 Vue 3 网页中的静态三角网格 BIM 浏览、构件树查询、按节点选择/外观、业务标签，以及有限区域的 GIS 配准、天地图影像与 DEM 地形。IFC/RVT 等需要先在外部转换成标准非压缩 GLB/glTF。没有配置 Draco、KTX2、Meshopt 解码器；模型动画播放、编辑、测量、剖切不在当前公开能力内；连接线支持可选循环光点。InstancedMesh 按对象视为一个构件，不支持逐实例拾取与外观。Line/Points 不属于完整支持的构件外观与包围盒对象。
 
 GIS 仅接受 EPSG:4529、4490、4326，采用局部水平刚性配准和已知单位换算，不自动拟合缩放或精密基准转换。DEM 默认关闭，不支持注记和无限漫游；真实高程模式需提供可靠高程配准及基准转换，测量使用前需以真实控制点、残差和独立检查点验收。
 

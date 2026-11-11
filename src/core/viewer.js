@@ -28,6 +28,8 @@ import { createCameraNavigation } from '../camera/navigation/camera-navigation.j
 import { projectMarkers } from '../markers/markers.js'
 import { createImageryPlan } from '../gis/projection.js'
 import { createImageryLayer } from '../gis/layer.js'
+import { createConnectionLines } from '../connections/connection-lines.js'
+import { connectionLineFailure } from '../connections/connection-line-data.js'
 
 /** 一个 Viewer 管理自己的 GPU、相机、选择效果及可选影像层；不包含矿山业务数据。 */
 export function createViewer(
@@ -42,6 +44,7 @@ export function createViewer(
   const scene = new Scene()
   const camera = new PerspectiveCamera(42, 1, 0.01, 100000)
   const renderer = new WebGLRenderer({ antialias: true })
+  const connections = createConnectionLines()
   renderer.outputColorSpace = SRGBColorSpace
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.domElement.setAttribute('aria-label', '三维模型：拖动旋转，滚轮缩放，右键平移')
@@ -106,6 +109,15 @@ export function createViewer(
   let navigationVisible = false,
     lastOrientation,
     contextAvailable = true
+  const ownerDocument = container.ownerDocument
+  const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')
+  function playbackChanged() {
+    // 暂停时间不计入下一帧；不取消相机或 GIS 仍需使用的共享帧。
+    connections.pause()
+    invalidate()
+  }
+  ownerDocument.addEventListener('visibilitychange', playbackChanged)
+  reducedMotion?.addEventListener('change', playbackChanged)
   const background = createBackground(scene, invalidate, onBackgroundError)
   function clearImagery() {
     imagery?.dispose()
@@ -115,7 +127,11 @@ export function createViewer(
   }
   function updateClip() {
     // 滚轮直接移动相机，同样需要保留完整模型；包围球只在加载时计算。
-    let far = Math.max(camera.far, zoomLimit.getRequiredFar() ?? 0)
+    let far = Math.max(
+      camera.far,
+      zoomLimit.getRequiredFar() ?? 0,
+      connections.getRequiredFar(camera.position),
+    )
     if (imagery) {
       // 聚焦小构件时也保留地图的远裁剪范围，不改变观察中心和距离边界。
       const box = imagery.bounds
@@ -131,12 +147,13 @@ export function createViewer(
   }
   function invalidate() {
     // 相机阻尼、外观和标签共享同一帧调度；静止时不维持常驻渲染循环。
-    if (!frame && !destroyed) frame = requestAnimationFrame(render)
+    if (!frame && !destroyed && contextAvailable) frame = requestAnimationFrame(render)
   }
   function render(now) {
     frame = 0
-    if (destroyed) return
+    if (destroyed || !contextAvailable) return
     const moving = motion.update(now)
+    const flowing = connections.update(now, !ownerDocument.hidden && !reducedMotion?.matches)
     controls.update()
     camera.updateMatrixWorld(true)
     if (
@@ -154,6 +171,7 @@ export function createViewer(
       if (active) composer.render()
       else renderer.render(scene, camera)
     })
+    connections.render(renderer, camera)
     // GIS 瓦片完成也会请求渲染；相机和标记未变时复用投影，避免重复聚合。
     if (
       current &&
@@ -192,12 +210,18 @@ export function createViewer(
       clusterOperation = undefined
       completed.onComplete()
     }
-    if (moving) invalidate()
+    if (moving || flowing) invalidate()
   }
   controls.addEventListener('change', invalidate)
   function resize() {
     const rect = container.getBoundingClientRect()
-    if (!rect.width || !rect.height || (rect.width === width && rect.height === height)) return
+    if (rect.width <= 0 || rect.height <= 0) {
+      width = 0
+      height = 0
+      connections.resize(0, 0)
+      return
+    }
+    if (rect.width === width && rect.height === height) return
     width = rect.width
     height = rect.height
     overlayDirty = true
@@ -207,6 +231,7 @@ export function createViewer(
     camera.aspect = width / height
     camera.updateProjectionMatrix()
     zoomLimit.updateViewport(width, height)
+    connections.resize(width, height)
     background.resize(width, height)
     invalidate()
   }
@@ -216,6 +241,9 @@ export function createViewer(
   const contextLost = (event) => {
     event.preventDefault()
     contextAvailable = false
+    cancelAnimationFrame(frame)
+    frame = 0
+    connections.pause()
     motion.cancel()
     zoom.clearPending()
     zoomLimit.clear()
@@ -285,6 +313,7 @@ export function createViewer(
     },
     show(model, index, state, view) {
       cancelClusterFocus()
+      connections.setModel(model, index)
       overlayDirty = true
       clearImagery()
       onGisStatus({ status: 'disabled', loaded: 0, failed: 0, total: 0 })
@@ -384,6 +413,22 @@ export function createViewer(
         })
         invalidate()
       }
+    },
+    setConnectionLine(value) {
+      if (!current || destroyed || !contextAvailable)
+        return connectionLineFailure('模型未就绪、上下文不可用或查看器已销毁')
+      const result = connections.setLine(value)
+      if (result.success) invalidate()
+      return result
+    },
+    removeConnectionLine(id) {
+      const removed = connections.remove(id)
+      if (removed) invalidate()
+      return removed
+    },
+    clearConnectionLines() {
+      connections.clear()
+      if (!destroyed) invalidate()
     },
     setMarkers(values) {
       cancelClusterFocus()
@@ -519,6 +564,9 @@ export function createViewer(
       motion.cancel()
       zoom.dispose()
       zoomLimit.dispose()
+      connections.dispose()
+      ownerDocument.removeEventListener('visibilitychange', playbackChanged)
+      reducedMotion?.removeEventListener('change', playbackChanged)
       clearImagery()
       background.dispose()
       cancelAnimationFrame(frame)

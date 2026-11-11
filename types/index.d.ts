@@ -1,5 +1,6 @@
 export { default as MineViewer } from './MineViewer.js'
 export type * from './types.js'
+export type * from './connection-lines.js'
 export type * from './gis.js'
 export type { GisOptions, GisStatus, TerrainOptions, TerrainStatus } from './gis-imagery.js'
 

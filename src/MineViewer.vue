@@ -15,6 +15,7 @@ import ComponentTreePanel from './model/component-tree/ComponentTreePanel.vue'
 import { indexTree, visibilityUpdates } from './model/component-tree/tree-state.js'
 import MarkerClusters from './markers/MarkerClusters.vue'
 import { createMarkerClustering, resolveMarkerClustering } from './markers/marker-clustering.js'
+import { connectionLineFailure } from './connections/connection-line-data.js'
 
 const props = defineProps({
   modelSource: { type: Object, required: true },
@@ -147,6 +148,8 @@ async function reload() {
       return
     }
     const index = createComponents([candidate.scene], candidate)
+    console.log('构件树', index.tree)
+    console.log('构件数组', [...index.byId.values()])
     candidateAppearance = createAppearance(index, (event) => {
       appearanceRevision.value++
       viewer?.refresh()
@@ -331,6 +334,12 @@ function zoomView(method, options) {
 }
 
 const api = {
+  setConnectionLine: (options) =>
+    viewer?.setConnectionLine(options) || connectionLineFailure('模型未就绪或查看器已销毁'),
+  removeConnectionLine: (id) => viewer?.removeConnectionLine(id) || false,
+  clearConnectionLines: () => {
+    viewer?.clearConnectionLines()
+  },
   getComponentTree: () => (components ? cloneComponentTree(components.tree) : null),
   getSceneTree: () => (components ? sceneTree(components) : null),
   getSceneRoot: () => model?.scene || null,

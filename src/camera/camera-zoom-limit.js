@@ -24,7 +24,6 @@ export function createCameraZoomLimit(camera, controls, domElement) {
       return
     }
     const box = new Box3().setFromObject(root, true)
-    console.log(box, 'box')
     const sphere = box.isEmpty() ? null : box.getBoundingSphere(new Sphere())
     modelSphere =
       sphere &&

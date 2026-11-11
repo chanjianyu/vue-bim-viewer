@@ -1,4 +1,5 @@
 import type { Object3D } from 'three'
+import type { ConnectionLineOptions, ConnectionLineResult } from './connection-lines.js'
 /** 坐标均为模型原始坐标单位；内部展示居中不改变这个坐标空间。 */
 export interface Point3 {
   x: number
@@ -205,6 +206,12 @@ export type ViewDirection = 'top' | 'bottom' | 'left' | 'right' | 'front' | 'bac
 
 /** 高级接口返回活的 Three 对象；只读使用，不能存入 localStorage。 */
 export interface ViewerApi {
+  /** 创建或整体替换同 ID 连接线；失败保留原线，不缓存未就绪请求。 */
+  setConnectionLine(options: ConnectionLineOptions): ConnectionLineResult
+  /** 删除已有连接线返回 true；不存在或无效 ID 返回 false。 */
+  removeConnectionLine(id: string): boolean
+  /** 清空全部连接线，可重复调用。 */
+  clearConnectionLines(): void
   /** 返回独立的完整树快照；就绪前为 null，修改快照不影响运行状态。 */
   getComponentTree(): ComponentTree | null
   /** 返回源节点结构快照，去掉业务元数据；不包含展示 wrapper。 */

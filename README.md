@@ -14,6 +14,7 @@
 - **外观管理**：显隐、颜色、不透明/半透明两档状态、批量修改，以及外观差异的导出、合并导入和恢复。
 - **业务标记**：模型坐标或构件锚点定位，支持自定义标签与弹窗插槽。
 - **标记聚合**：可选按屏幕距离聚合，点击拉近；重合或无法拆分时显示分页成员列表，默认关闭。
+- **构件连接线**：按有序构件 ID 绘制多条空间折线，每段中间显示方向箭头，可选沿路径循环移动的光点，支持独立替换、删除与清空。
 - **场景背景**：响应式背景颜色与静态图片，居中等比裁剪，加载失败回退纯色。
 - **GIS 配准**：三点及多点局部配准、误差报告和坐标转换。
 - **地图与地形**：通过 three-tile 加载有限范围的天地图影像，可选 DEM 相对预览或真实高程对齐。
@@ -171,6 +172,31 @@ viewer.value.zoomOut({ duration: 0 })
 
 `focusComponent()`、`focusPoint()`、`setViewState()`、`initialView` 和 `resetView()` 仍可使用更远的程序化视角；超出用户上限时继续向外缩放保持当前位置，向内缩放可恢复。模型重载及桌面、窄屏视口变化会重新计算上限，尺寸变化本身不移动相机。包围球比例用于防止过度拉远，不保证被隐藏、遮挡或平移出视口的模型仍可见。非法参数或不可用状态不打断有效动画。返回 `true` 仅表示接受请求。公开类型为 `ZoomOptions`，完整规则见 [API 实例方法](./API.md#viewer-api)。
 
+## 构件连接线
+
+通过公开组件实例提交有序的构件 ID；同一线 ID 会整体替换，未提供的样式恢复默认值：
+
+```js
+const result = viewer.value.setConnectionLine({
+  id: 'route-1',
+  componentIds: ['component-a', 'component-b', 'component-c'],
+  color: '#ffb347',
+  width: 3,
+  showArrows: true,
+  flow: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+})
+if (!result.success) console.warn(result.error, result.unknownIds, result.invalidAnchorIds)
+
+viewer.value.removeConnectionLine('route-1')
+viewer.value.clearConnectionLines()
+```
+
+自身是 Mesh 的构件使用现有 `center`，其他节点使用自身 `origin`，即使其后代包含 Mesh。SDK 自动处理模型展示偏移。线条默认始终可见，不受构件隐藏、透明或选中状态影响；相机裁剪和视口边界仍生效。每段箭头为 10×8 CSS 像素，投影长度不足 24px 或端点位于近裁剪面之前时隐藏箭头。
+
+光点动画默认关闭，只有 `flow.enabled: true` 开启。每条路径一个光点，按构件顺序沿空间折线匀速移动，默认单圈 3000ms、直径 8 CSS 像素、白色；到终点直接回到起点，不绘制首尾连接段。光点继承线条显隐和透明度，与箭头开关独立。成功替换后从起点重播，失败保留旧进度，相机操作不重置进度。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停，恢复后继续；减少动态效果下保留静态光点。启用后通过 Viewer 共享帧持续渲染，关闭或删除最后一条动画后停止光点续帧。
+
+无效配置、未知构件、无效锚点或全部点重合都会拒绝本次更新并保留原线。成功加载新模型会清空连接线，失败重载保留；宿主自行按模型身份和 revision 保存并重新提交配置。完整参数与限制见 [连接线 API](./API.md#connection-lines)。
+
 ## 天地图影像与 DEM
 
 `gis` 需要宿主提供天地图 Key 和 `createGisPlacement()` 的配准结果：
@@ -235,6 +261,7 @@ const gis = {
 
 - 提供 `zoomIn()` / `zoomOut()` 实例方法，支持倍率、过渡时长和连续调用，宿主自行提供缩放按钮。
 - 提供可选 Marker 聚合、分页成员列表和 `marker-cluster` 展示插槽；聚合默认关闭，默认半径为 48 CSS 像素。
+- 提供构件连接线、每段方向箭头及可选循环光点，支持多条线独立替换、删除和清空，通过公开组件实例接入。
 - 聚合默认外观通过 CSS 覆盖，自定义内容通过插槽。如果宿主曾配置开发阶段的 `--mv-cluster-*` 变量，请迁移为 CSS 覆盖；0.3.5 不读取这些变量。其他功能的 CSS 变量保持不变。
 
 完整参数、默认值和调用约束见 [API 文档](./API.md)。
@@ -250,11 +277,11 @@ const gis = {
 | SSR      | 在客户端挂载组件                    |
 | 模型     | 静态 GLB/glTF，未配置额外压缩解码器 |
 
-IFC、RVT 等源 BIM 文件需先转换为支持的 GLB/glTF。基础模型显示需要 WebGL2；启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 还需要 `DecompressionStream`。这些是地图和地形的附加要求，基础模型显示不一定需要全部能力。SSR 只能在客户端挂载组件。动画播放、测量、剖切和模型编辑不属于公开能力。具体兼容边界及已知问题见 [使用限制](./API.md#troubleshooting)。
+IFC、RVT 等源 BIM 文件需先转换为支持的 GLB/glTF。基础模型显示需要 WebGL2；启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 还需 `DecompressionStream`。这些是地图和地形的附加要求，基础模型显示不一定需要全部能力。SSR 只能在客户端挂载组件。模型动画播放、测量、剖切和模型编辑不属于公开能力。具体兼容边界及已知问题见 [使用限制](./API.md#troubleshooting)。
 
 ## 文档
 
-[API 使用文档](./API.md) 包含全部 8 项 Props、23 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
+[API 使用文档](./API.md) 包含全部 8 项 Props、26 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
 
 维护者可在源码仓库中查阅 `DEVELOPMENT.md`，了解构建、宿主联调和发布流程；该文件不包含在 npm 分发包中。
 
