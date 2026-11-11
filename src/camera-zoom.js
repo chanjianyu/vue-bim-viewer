@@ -1,5 +1,5 @@
 /** 缩放只计算视距并复用统一动画；每个 Viewer 独立保存连续点击的目标。 */
-export function createCameraZoom(camera, controls, motion) {
+export function createCameraZoom(camera, controls, motion, zoomLimit) {
   let pending
   let disposed = false
 
@@ -20,6 +20,8 @@ export function createCameraZoom(camera, controls, motion) {
     const base = pending?.distance ?? currentDistance
     const minDistance = controls.minDistance
     const maxDistance = controls.maxDistance
+    const userMaxDistance = inward ? Infinity : zoomLimit?.getMaxDistance(target)
+    const maximum = Math.min(maxDistance, userMaxDistance ?? Infinity)
     const minimum = Math.max(minDistance, camera.near * 1.001)
     if (
       ![currentDistance, base, minDistance, minimum, camera.near, camera.far].every(
@@ -30,14 +32,16 @@ export function createCameraZoom(camera, controls, motion) {
       minDistance < 0 ||
       camera.near <= 0 ||
       camera.far <= camera.near ||
-      !(maxDistance >= minimum)
+      !(maximum >= minimum)
     )
       return false
 
-    const distance = Math.max(
-      minimum,
-      Math.min(maxDistance, inward ? base / factor : base * factor),
-    )
+    const boundaryTolerance =
+      Number.EPSILON * Math.max(currentDistance, base, ...target.toArray().map(Math.abs)) * 8
+    // 交替调用按累计目标判断边界；没有累计目标的超远视角不会被 zoomOut 拉回。
+    if (!inward && base >= maximum - boundaryTolerance) return false
+
+    const distance = Math.max(minimum, Math.min(maximum, inward ? base / factor : base * factor))
     // 大坐标下 position-target 的精度受坐标量级影响，边界判断不能只按视距计算误差。
     const tolerance =
       Number.EPSILON *

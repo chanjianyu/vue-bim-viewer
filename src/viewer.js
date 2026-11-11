@@ -18,6 +18,7 @@ import { createBackground } from './background.js'
 import { createSelection } from './selection.js'
 import { createCameraMotion, createPointView, createClusterView } from './camera-motion.js'
 import { createCameraZoom } from './camera-zoom.js'
+import { createCameraZoomLimit } from './camera-zoom-limit.js'
 import { createCameraView, getCameraViewState, validateViewState } from './camera-view-state.js'
 import { createCameraNavigation } from './navigation/camera-navigation.js'
 import { projectMarkers } from './markers.js'
@@ -46,7 +47,8 @@ export function createViewer(
   controls.enableDamping = true
   controls.dampingFactor = 0.09
   const motion = createCameraMotion(camera, controls)
-  const zoom = createCameraZoom(camera, controls, motion)
+  const zoomLimit = createCameraZoomLimit(camera, controls, renderer.domElement)
+  const zoom = createCameraZoom(camera, controls, motion, zoomLimit)
   const navigation = createCameraNavigation(camera, controls, motion)
   controls.addEventListener('start', startInteraction)
   scene.add(new HemisphereLight('#e5efff', '#758096', 2.6))
@@ -108,11 +110,16 @@ export function createViewer(
     terrainHeightTransform = undefined
   }
   function updateClip() {
-    if (!imagery) return
-    // 聚焦小构件时也保留地图的远裁剪范围，但不改变聚焦目标和模型缩放限制。
-    const box = imagery.bounds
-    const far =
-      camera.position.distanceTo(box.getCenter(new Vector3())) + box.getSize(new Vector3()).length()
+    // 滚轮直接移动相机，同样需要保留完整模型；包围球只在加载时计算。
+    let far = Math.max(camera.far, zoomLimit.getRequiredFar() ?? 0)
+    if (imagery) {
+      // 聚焦小构件时也保留地图的远裁剪范围，不改变观察中心和距离边界。
+      const box = imagery.bounds
+      const imageryFar =
+        camera.position.distanceTo(box.getCenter(new Vector3())) +
+        box.getSize(new Vector3()).length()
+      if (Number.isFinite(imageryFar)) far = Math.max(far, imageryFar)
+    }
     if (camera.far < far) {
       camera.far = far
       camera.updateProjectionMatrix()
@@ -195,6 +202,7 @@ export function createViewer(
     composer.setSize(width, height)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
+    zoomLimit.updateViewport(width, height)
     background.resize(width, height)
     invalidate()
   }
@@ -206,6 +214,7 @@ export function createViewer(
     contextAvailable = false
     motion.cancel()
     zoom.clearPending()
+    zoomLimit.clear()
     clusterOperation = undefined
     if (!destroyed) onContextLost()
   }
@@ -284,6 +293,10 @@ export function createViewer(
       initialView = view
       viewWarning = undefined
       lastOrientation = undefined
+      zoomLimit.clear()
+      zoomLimit.clearModelBounds()
+      zoomLimit.setModelBounds(model.root)
+      zoomLimit.updateViewport(width, height)
       scene.add(model.root)
       renderer.renderLists.dispose()
       fit(model.root, true, { duration: 0 })
@@ -501,6 +514,7 @@ export function createViewer(
       projectedOverlay = undefined
       motion.cancel()
       zoom.dispose()
+      zoomLimit.dispose()
       clearImagery()
       background.dispose()
       cancelAnimationFrame(frame)
