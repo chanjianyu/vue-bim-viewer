@@ -43,6 +43,17 @@ export interface BackgroundOptions {
   /** 相对于消费页面的图片地址；省略或空字符串时使用纯色。 */
   imageUrl?: string
 }
+/** 默认启用均衡渲染；配置变化不重新加载模型，不改写源材质。 */
+export interface RenderingOptions {
+  /** 默认 true；false 恢复基础光照及原有渲染路径，忽略其余增强字段。 */
+  enabled?: boolean
+  /** 默认 true；轻度、半分辨率 GTAO，关闭可减少渲染开销。 */
+  ambientOcclusion?: boolean
+  /** 默认 false；仅主方向光产生柔和投影，不添加地板。 */
+  shadows?: boolean
+  /** 默认 1；增强模式曝光，必须是有限正数，非法值回退 1。 */
+  exposure?: number
+}
 export interface Appearance {
   visible: boolean
   /** 半透明固定为原材质不透明度的 50%；false 保留原材质。 */

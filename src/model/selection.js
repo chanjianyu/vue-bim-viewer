@@ -5,6 +5,21 @@ const tint = new Color('#28c99a')
 const tintStrength = 0.65
 
 class ComponentOutlinePass extends OutlinePass {
+  render(renderer, ...args) {
+    const background = this.renderScene.background
+    const override = this.renderScene.overrideMaterial
+    try {
+      super.render(renderer, ...args)
+    } finally {
+      // 增强管线失败回退时也必须恢复描边临时隐藏的对象和覆盖材质。
+      for (const [object, visible] of this._visibilityCache) object.visible = visible
+      this._visibilityCache.clear()
+      this._selectionCache.clear()
+      this.renderScene.background = background
+      this.renderScene.overrideMaterial = override
+    }
+  }
+
   _updateSelectionCache() {
     // 固定版 OutlinePass 默认递归 Mesh 的后代；这里仅使用已按外观过滤的精确网格集合。
     this._selectionCache.clear()

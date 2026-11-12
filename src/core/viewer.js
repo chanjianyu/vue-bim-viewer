@@ -1,7 +1,5 @@
 import {
   Box3,
-  DirectionalLight,
-  HemisphereLight,
   PerspectiveCamera,
   Raycaster,
   Scene,
@@ -11,10 +9,8 @@ import {
   WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { createBackground } from './background.js'
+import { createRendering } from './rendering.js'
 import { createSelection } from '../model/selection.js'
 import { createCameraMotion, createPointView, createClusterView } from '../camera/camera-motion.js'
 import { createCameraZoom } from '../camera/camera-zoom.js'
@@ -58,20 +54,8 @@ export function createViewer(
   const zoom = createCameraZoom(camera, controls, motion, zoomLimit)
   const navigation = createCameraNavigation(camera, controls, motion)
   controls.addEventListener('start', startInteraction)
-  scene.add(new HemisphereLight('#e5efff', '#758096', 2.6))
-  const key = new DirectionalLight('#fff2dc', 2.7)
-  key.position.set(3, 6, 5)
-  scene.add(key)
-  const fill = new DirectionalLight('#a0c7ff', 1.5)
-  fill.position.set(-4, 1, -2)
-  scene.add(fill)
-  const composer = new EffectComposer(renderer)
-  const renderPass = new RenderPass(scene, camera)
   const selection = createSelection(scene, camera)
-  const output = new OutputPass()
-  composer.addPass(renderPass)
-  composer.addPass(selection.pass)
-  composer.addPass(output)
+  const rendering = createRendering(scene, camera, renderer, selection.pass, invalidate)
   let current, components, appearance
   let markers = [],
     width = 0,
@@ -167,10 +151,7 @@ export function createViewer(
     }
     updateClip()
     imagery?.update(camera)
-    selection.render(components, appearance, (active) => {
-      if (active) composer.render()
-      else renderer.render(scene, camera)
-    })
+    selection.render(components, appearance, (active) => rendering.render(active))
     connections.render(renderer, camera)
     // GIS 瓦片完成也会请求渲染；相机和标记未变时复用投影，避免重复聚合。
     if (
@@ -227,7 +208,7 @@ export function createViewer(
     overlayDirty = true
     cancelClusterFocus()
     renderer.setSize(width, height, false)
-    composer.setSize(width, height)
+    rendering.resize(width, height)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
     zoomLimit.updateViewport(width, height)
@@ -308,6 +289,9 @@ export function createViewer(
     return accepted
   }
   return {
+    setRendering(options) {
+      rendering.set(options)
+    },
     setBackground(options) {
       background.set(options)
     },
@@ -331,6 +315,7 @@ export function createViewer(
       zoomLimit.setModelBounds(model.root)
       zoomLimit.updateViewport(width, height)
       scene.add(model.root)
+      rendering.setModel(model.root)
       renderer.renderLists.dispose()
       fit(model.root, true, { duration: 0 })
       return viewWarning
@@ -553,6 +538,7 @@ export function createViewer(
       )
     },
     refresh() {
+      rendering.invalidateShadows()
       overlayDirty = true
       invalidate()
     },
@@ -576,8 +562,7 @@ export function createViewer(
       controls.dispose()
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       selection.dispose()
-      output.dispose()
-      composer.dispose()
+      rendering.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
       renderer.domElement.remove()

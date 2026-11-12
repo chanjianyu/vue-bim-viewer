@@ -25,6 +25,7 @@ const props = defineProps({
   cameraTransition: { type: Object },
   gis: { type: Object },
   background: { type: Object },
+  rendering: { type: Object },
   navigation: { type: Object },
 })
 const emit = defineEmits([
@@ -124,6 +125,11 @@ watch(
 watch(
   () => props.background,
   (value) => viewer?.setBackground(value),
+  { deep: true },
+)
+watch(
+  () => props.rendering,
+  (value) => viewer?.setRendering(value),
   { deep: true },
 )
 
@@ -425,6 +431,7 @@ onMounted(() => {
     )
     viewer.setNavigationVisible(navigationState.value.cube)
     viewer.setBackground(props.background)
+    viewer.setRendering(props.rendering)
     void reload()
   } catch (cause) {
     error.value = `无法创建三维视窗：${cause instanceof Error ? cause.message : String(cause)}`

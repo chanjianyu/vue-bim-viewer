@@ -328,9 +328,55 @@ async function refreshModel() {
 | `cameraTransition` | `CameraTransitionOptions` | 未设置时定位/导航 800ms、缩放 300ms | 设置相机操作的默认过渡时长，单次调用可覆盖 |
 | `gis`              | `GisOptions`              | 不加载地图                                        | 可选天地图影像及 DEM，见 9.9、9.11                |
 | `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }`                            | 深度监听，实时更新背景，不重载模型                |
+| `rendering`        | `RenderingOptions`        | `{ enabled: true, ambientOcclusion: true, shadows: false, exposure: 1 }` | 深度监听，实时调整通用渲染效果，不重载模型 |
 | `navigation`       | `NavigationOptions`       | `{ home: true, cube: true, componentTree: true }` | 构件目录、Home 与方向骰子分别实时显隐，不重载模型 |
 
-Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background` 和 `:navigation`。
+Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background`、`:rendering` 和 `:navigation`。
+
+<a id="rendering"></a>
+
+### 默认均衡渲染
+
+省略 `rendering` 时自动启用中性环境光照、柔和补光、轻度 GTAO、Neutral 色调映射和 SMAA。投影阴影默认关闭。所有模型使用同一套配置，不依赖模型名称、矿山坐标或背景图片；不替换模型源材质，不改写贴图、颜色、金属度和粗糙度，也不改变外观差异记录。光照和色调映射会改变屏幕上的最终颜色，与基础模式的截图不保证相同。
+
+```ts
+import type { RenderingOptions } from '@caojinyu111/vue-bim-viewer'
+
+const rendering: RenderingOptions = {
+  enabled: true,
+  ambientOcclusion: true,
+  shadows: false,
+  exposure: 1,
+}
+```
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `enabled` | `true` | `false` 恢复原有灯光与渲染路径，并释放增强资源；其余字段暂不生效 |
+| `ambientOcclusion` | `true` | 轻度环境遮蔽，关闭后保留柔光、色调映射和抗锯齿 |
+| `shadows` | `false` | 开启主方向光柔和投影，增加渲染和显存开销，不生成虚拟地板 |
+| `exposure` | `1` | 增强模式曝光，必须是有限正数 |
+
+三个开关只接受布尔值，曝光只接受有限正数。字段省略或非法时回退该字段的默认值，未知字段忽略。配置深度响应式更新，不重新加载模型、不重置相机、选择或构件外观；关闭后重新开启会重新准备增强资源。
+
+```vue
+<!-- 恢复基础渲染，适合对比或降低开销 -->
+<MineViewer :model-source="source" :rendering="{ enabled: false }" />
+
+<!-- 保留柔光、色调映射和抗锯齿，关闭 AO -->
+<MineViewer :model-source="source" :rendering="{ ambientOcclusion: false }" />
+
+<!-- 按需开启柔和投影 -->
+<MineViewer :model-source="source" :rendering="{ shadows: true, exposure: 1 }" />
+```
+
+环境贴图通过包内 `RoomEnvironment` 与 PMREM 生成，无需下载 HDR，也不将普通背景图片用作光照。PBR 材质可获得环境光照；无光照材质保留自身着色方式，不承诺所有源材质的受光表现相同。选中与未选中均使用同一增强管线，SMAA 位于 OutputPass 前；连接线及其光点仍在后处理后绘制，HTML 标签不参与后处理。
+
+GTAO 使用主画面宽高各 50% 的内部目标、低采样和去噪，混合强度为 0.3。仅可见、不透明的模型材质组参与遮蔽；透明、透射、线框、GIS 和辅助对象不作为实心 AO 遮挡。Alpha 裁剪贴图在法线深度采集中保留孔洞。AO 是屏幕空间近似，薄构件、遮挡边缘和画面外几何存在限制，不等同于全局光照。
+
+阴影只由主方向光投射，使用完整模型包围盒适配投影范围及尺度偏移，阴影贴图最高 2048。透明或混合透明材质的网格保守排除投射和接收，避免产生实心阴影；隐藏祖先下的构件仍保持隐藏。大范围模型的阴影细节有限，地下模型没有自动地面接收阴影。阴影与 AO 均不修改模型坐标或相机裁剪规则。
+
+增强继续共用按需渲染，静止时不新增常驻帧循环；开启连接线光点等动画时，每帧仍需绘制模型及后处理，实际开销取决于视口、模型和设备。资源准备或增强绘制抛出错误时回退基础渲染，并在控制台给出一次警告，不新增模型错误事件。关闭再开启增强可重新尝试；WebGL 上下文丢失仍沿用原有中断处理，不承诺自动恢复。
 
 `initialView` 现在只接受 `ViewState` 快照，不再支持旧的 `direction` / `fitPadding` 配置。快照中的 `position`、`target`、`up` 使用原模型坐标，不包含展示居中偏移；`near`、`far`、`fov`、`aspect` 和距离边界由 SDK 按当前模型与容器自动计算。省略 `initialView` 时仍自动适配全模型；快照非法时回退自动适配，并在 `model-loaded.warnings` 中说明原因。
 
@@ -1486,6 +1532,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `FocusPointOptions`       | 继承相机过渡选项，增加 `distance?`，模型单位，省略保持当前距离            | [坐标定位](#viewer-api)    |
 | `ZoomOptions`             | 继承相机过渡选项，增加 `factor?`，默认 `1.2`；未配置时缩放时长 `300ms` | [视角缩放](#viewer-api) |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
+| `RenderingOptions`        | 均衡渲染 `enabled?`、`ambientOcclusion?`、`shadows?`、`exposure?` | [渲染增强](#rendering) |
 | `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
 | `AppearanceState`         | `own`、`effective`、`initial`                                          | [外观](#appearance)        |

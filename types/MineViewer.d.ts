@@ -15,6 +15,7 @@ import type {
   ModelSource,
   NavigationOptions,
   ProjectedMarker,
+  RenderingOptions,
   ViewerApi,
 } from './types.js'
 
@@ -26,6 +27,7 @@ type Props = {
   cameraTransition?: CameraTransitionOptions
   gis?: GisOptions
   background?: BackgroundOptions
+  rendering?: RenderingOptions
   navigation?: NavigationOptions
 }
 
