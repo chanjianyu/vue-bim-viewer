@@ -328,23 +328,23 @@ async function refreshModel() {
 | `cameraTransition` | `CameraTransitionOptions` | 未设置时定位/导航 800ms、缩放 300ms | 设置相机操作的默认过渡时长，单次调用可覆盖 |
 | `gis`              | `GisOptions`              | 不加载地图                                        | 可选天地图影像及 DEM，见 9.9、9.11                |
 | `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }`                            | 深度监听，实时更新背景，不重载模型                |
-| `rendering`        | `RenderingOptions`        | `{ enabled: true, ambientOcclusion: true, shadows: false, exposure: 1 }` | 深度监听，实时调整通用渲染效果，不重载模型 |
+| `rendering`        | `RenderingOptions`        | `{ enabled: false, ambientOcclusion: false, shadows: false, exposure: 1 }` | 深度监听，实时调整通用渲染效果，不重载模型 |
 | `navigation`       | `NavigationOptions`       | `{ home: true, cube: true, componentTree: true }` | 构件目录、Home 与方向骰子分别实时显隐，不重载模型 |
 
 Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background`、`:rendering` 和 `:navigation`。
 
 <a id="rendering"></a>
 
-### 默认均衡渲染
+### 可选渲染增强
 
-省略 `rendering` 时自动启用中性环境光照、柔和补光、轻度 GTAO、Neutral 色调映射和 SMAA。投影阴影默认关闭。所有模型使用同一套配置，不依赖模型名称、矿山坐标或背景图片；不替换模型源材质，不改写贴图、颜色、金属度和粗糙度，也不改变外观差异记录。光照和色调映射会改变屏幕上的最终颜色，与基础模式的截图不保证相同。
+省略 `rendering` 或传入空对象时，渲染增强全部关闭，使用原有基础灯光、选择描边和原生抗锯齿。只有显式设置 `enabled: true` 才启用中性环境光照、柔和补光、Neutral 色调映射和 SMAA；轻度 GTAO 与投影阴影仍默认关闭，需分别显式开启。所有模型使用同一套配置，不依赖模型名称、矿山坐标或背景图片；不替换模型源材质，不改写贴图、颜色、金属度和粗糙度，也不改变外观差异记录。增强光照和色调映射会改变屏幕上的最终颜色，与基础模式的截图不保证相同。
 
 ```ts
 import type { RenderingOptions } from '@caojinyu111/vue-bim-viewer'
 
 const rendering: RenderingOptions = {
-  enabled: true,
-  ambientOcclusion: true,
+  enabled: false,
+  ambientOcclusion: false,
   shadows: false,
   exposure: 1,
 }
@@ -352,22 +352,28 @@ const rendering: RenderingOptions = {
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| `enabled` | `true` | `false` 恢复原有灯光与渲染路径，并释放增强资源；其余字段暂不生效 |
-| `ambientOcclusion` | `true` | 轻度环境遮蔽，关闭后保留柔光、色调映射和抗锯齿 |
-| `shadows` | `false` | 开启主方向光柔和投影，增加渲染和显存开销，不生成虚拟地板 |
+| `enabled` | `false` | 显式 `true` 开启柔光、环境光照、色调映射和 SMAA；`false` 使用原有灯光与渲染路径，释放增强资源，其余字段不生效 |
+| `ambientOcclusion` | `false` | 仅在 `enabled: true` 时可显式开启轻度环境遮蔽 |
+| `shadows` | `false` | 仅在 `enabled: true` 时可显式开启主方向光柔和投影，增加渲染和显存开销，不生成虚拟地板 |
 | `exposure` | `1` | 增强模式曝光，必须是有限正数 |
 
-三个开关只接受布尔值，曝光只接受有限正数。字段省略或非法时回退该字段的默认值，未知字段忽略。配置深度响应式更新，不重新加载模型、不重置相机、选择或构件外观；关闭后重新开启会重新准备增强资源。
+三个开关只接受布尔值，曝光只接受有限正数。字段省略或非法时回退该字段的默认值，未知字段忽略。`enabled` 未显式设为 `true` 时，单独传入 `ambientOcclusion: true`、`shadows: true` 或曝光均不会开启增强。配置深度响应式更新，不重新加载模型、不重置相机、选择或构件外观；关闭后重新开启会重新准备增强资源。
 
 ```vue
-<!-- 恢复基础渲染，适合对比或降低开销 -->
-<MineViewer :model-source="source" :rendering="{ enabled: false }" />
+<!-- 默认基础渲染，无需配置 rendering -->
+<MineViewer :model-source="source" />
 
-<!-- 保留柔光、色调映射和抗锯齿，关闭 AO -->
-<MineViewer :model-source="source" :rendering="{ ambientOcclusion: false }" />
+<!-- 开启柔光、环境光照、色调映射和 SMAA；AO 与阴影仍关闭 -->
+<MineViewer :model-source="source" :rendering="{ enabled: true }" />
+
+<!-- 额外开启轻度 AO -->
+<MineViewer :model-source="source" :rendering="{ enabled: true, ambientOcclusion: true }" />
 
 <!-- 按需开启柔和投影 -->
-<MineViewer :model-source="source" :rendering="{ shadows: true, exposure: 1 }" />
+<MineViewer :model-source="source" :rendering="{ enabled: true, shadows: true, exposure: 1 }" />
+
+<!-- 动态关闭增强并释放对应资源 -->
+<MineViewer :model-source="source" :rendering="{ enabled: false }" />
 ```
 
 环境贴图通过包内 `RoomEnvironment` 与 PMREM 生成，无需下载 HDR，也不将普通背景图片用作光照。PBR 材质可获得环境光照；无光照材质保留自身着色方式，不承诺所有源材质的受光表现相同。选中与未选中均使用同一增强管线，SMAA 位于 OutputPass 前；连接线及其光点仍在后处理后绘制，HTML 标签不参与后处理。

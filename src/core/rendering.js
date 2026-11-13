@@ -18,8 +18,8 @@ import { isOpaqueSurface, ModelAmbientOcclusion } from './ambient-occlusion.js'
 
 export function resolveRendering(value) {
   return {
-    enabled: typeof value?.enabled === 'boolean' ? value.enabled : true,
-    ambientOcclusion: typeof value?.ambientOcclusion === 'boolean' ? value.ambientOcclusion : true,
+    enabled: typeof value?.enabled === 'boolean' ? value.enabled : false,
+    ambientOcclusion: typeof value?.ambientOcclusion === 'boolean' ? value.ambientOcclusion : false,
     shadows: typeof value?.shadows === 'boolean' ? value.shadows : false,
     exposure: Number.isFinite(value?.exposure) && value.exposure > 0 ? value.exposure : 1,
   }

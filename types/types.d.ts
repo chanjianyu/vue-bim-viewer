@@ -43,13 +43,13 @@ export interface BackgroundOptions {
   /** 相对于消费页面的图片地址；省略或空字符串时使用纯色。 */
   imageUrl?: string
 }
-/** 默认启用均衡渲染；配置变化不重新加载模型，不改写源材质。 */
+/** 渲染增强默认关闭；配置变化不重新加载模型，不改写源材质。 */
 export interface RenderingOptions {
-  /** 默认 true；false 恢复基础光照及原有渲染路径，忽略其余增强字段。 */
+  /** 默认 false；显式 true 开启柔光、环境光照、色调映射和 SMAA；false 使用基础渲染，忽略其余增强字段。 */
   enabled?: boolean
-  /** 默认 true；轻度、半分辨率 GTAO，关闭可减少渲染开销。 */
+  /** 默认 false；仅 enabled 为 true 时可显式开启轻度、半分辨率 GTAO。 */
   ambientOcclusion?: boolean
-  /** 默认 false；仅主方向光产生柔和投影，不添加地板。 */
+  /** 默认 false；仅 enabled 为 true 时可显式开启主方向光柔和投影，不添加地板。 */
   shadows?: boolean
   /** 默认 1；增强模式曝光，必须是有限正数，非法值回退 1。 */
   exposure?: number
