@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.3.5**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
+本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.4.0**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
 
 ## 环境与安装
 
@@ -110,15 +110,15 @@ npm run types:watch
 
 安装包验收无论成功或失败，都在宿主根目录执行 `npm run link` 和 `npm run check:link` 恢复并确认链接，核对 manifest 和锁文件未变。不要用直接导入 SDK 源码的方式代替公开包入口验证。
 
-## 0.3.5 版本内容
+## 0.4.0 版本内容
 
-本版纳入独立缩放方法、可选 Marker 聚合、自定义聚合插槽、模型坐标视角快照，以及按构件 ID 绘制的空间连接线、方向箭头和可选循环光点，并同步组件公开声明与接入文档。聚合默认关闭、半径默认 48 CSS 像素；默认按钮外观采用固定默认值，由宿主 CSS 覆盖或插槽扩展。如果宿主曾配置开发阶段的 `--mv-cluster-*` 变量，需迁移为 CSS 覆盖，按钮尺寸不影响聚合半径。
+本版纳入独立缩放方法、用户缩小上限、可选 Marker 聚合、自定义聚合插槽、模型坐标视角快照，以及按构件 ID 绘制的空间连接线、方向箭头和可选循环光点。渲染增强支持环境光照、柔和补光、Neutral 色调映射、SMAA、GTAO 和投影阴影，但默认全部关闭；AO 和阴影需要分别显式开启。聚合默认关闭、半径默认 48 CSS 像素；默认按钮外观采用固定默认值，由宿主 CSS 覆盖或插槽扩展。
 
 运行时入口保持 `MineViewer`、`flattenComponentTree`、`createGisPlacement`，内部缩放与聚合工厂不作为包导出。保持依赖版本和外观记录格式，清除无条件输出模型及构件数据的调试日志。`initialView` 已升级为 `ViewState`，旧的 `direction / fitPadding` 配置不再兼容；宿主未提供快照时使用自动适配。功能验收、浏览器兼容和性能范围以实际交付结果为准。
 
-## 0.3.5 打包与发布
+## 0.4.0 打包与发布
 
-确认包配置与锁文件中的版本均为 `0.3.5`，然后执行：
+确认包配置与锁文件中的版本均为 `0.4.0`，然后执行：
 
 ```sh
 npm run check
@@ -129,7 +129,7 @@ npm pack --dry-run
 
 检查包文件列表：应仅包含完整 `dist/`、`README.md`、`API.md`、`LICENSE` 和 `package.json`。共享分块、动态插件分块及声明必须完整，源码、测试、开发指南、本机配置和验收记录不进入 npm 包。
 
-需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.3.5.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
+需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.4.0.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
 
 使用具备包发布权限的 npm 账号发布已验证的安装包：
 
@@ -139,7 +139,7 @@ npm publish <已验证安装包的绝对路径> --access public
 
 发布目标由 `publishConfig` 指向官方 npm registry，访问权限为 public。认证信息通过本机 npm 配置或发布平台提供，不写入工程。`--dry-run` 用于检查分发内容，不创建线上版本。
 
-GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发；工作流检查 package.json 与 package-lock.json 的包名及版本一致，标签触发时还要求标签精确匹配 `v${package.version}`，不匹配则终止。准备版本不包含推送标签或启动工作流。提交发布内容时，确保 `src/core/`、`src/model/`、`src/camera/`、`src/markers/`、`src/connections/`、`src/gis/`、`src/shared/`、资源、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
+GitHub 的 Publish to npm 工作流支持手动触发和推送 `v*` 标签触发。工作流会在 Ubuntu、Node.js 24 和 npm 11 环境执行 `npm ci`、`npm run check`，然后运行 `npm publish --access public`；当前工作流不会额外校验标签是否精确匹配 `v${package.version}`，发布前应由维护者自行核对。准备版本不包含推送标签、启动工作流或执行发布。提交发布内容时，确保 `src/core/`、`src/model/`、`src/camera/`、`src/markers/`、`src/connections/`、`src/gis/`、`src/shared/`、资源、类型和文档均已纳入版本控制，避免只提交已有文件的修改而遗漏功能模块。
 
 ## 后续版本维护
 

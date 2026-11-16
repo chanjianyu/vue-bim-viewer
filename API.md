@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.3.5**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.4.0**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -72,7 +72,7 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.5
+npm install @caojinyu111/vue-bim-viewer@0.4.0
 ```
 
 运行环境要求 Vue **3.5.43**、Three.js **0.183.1** 和支持 WebGL2 的浏览器。Vue 与 Three.js 为精确版本的共享 peerDependencies，npm 7+ 会补齐尚未安装的 peer；已有不兼容版本的宿主先执行 `npm install vue@3.5.43 three@0.183.1`。three-tile **0.12.2** 与 Proj4js 随 SDK 安装，three-tile 随 SDK 构建。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
@@ -1139,7 +1139,7 @@ function onMarkerClick(marker) {
 
 使用非 scoped 样式时，将 `:deep(...)` 改为其中的普通选择器即可。建议保留至少 44×44px 的点击区域，并保留定位变换、焦点轮廓及禁用反馈。需要自定义图标、文字或业务状态时，使用上面的 `marker-cluster` 插槽。
 
-0.3.5 不读取 `--mv-cluster-*` CSS 变量。如果宿主曾配置开发阶段的这些变量，请迁移为 CSS 覆盖或自定义插槽；其他功能的 CSS 变量不受影响。
+0.4.0 不读取 `--mv-cluster-*` CSS 变量。如果宿主曾配置开发阶段的这些变量，请迁移为 CSS 覆盖或自定义插槽；其他功能的 CSS 变量不受影响。
 
 自定义图形尺寸不改变聚合半径；不测量文字或标签矩形，不增加边缘排布、避让或遮挡检测。默认成员列表仍每页 50 项，选择成员继续使用 marker-popup 和 marker-click。
 
@@ -1538,7 +1538,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `FocusPointOptions`       | 继承相机过渡选项，增加 `distance?`，模型单位，省略保持当前距离            | [坐标定位](#viewer-api)    |
 | `ZoomOptions`             | 继承相机过渡选项，增加 `factor?`，默认 `1.2`；未配置时缩放时长 `300ms` | [视角缩放](#viewer-api) |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
-| `RenderingOptions`        | 均衡渲染 `enabled?`、`ambientOcclusion?`、`shadows?`、`exposure?` | [渲染增强](#rendering) |
+| `RenderingOptions`        | 可选渲染增强 `enabled?`、`ambientOcclusion?`、`shadows?`、`exposure?` | [渲染增强](#rendering) |
 | `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
 | `AppearanceState`         | `own`、`effective`、`initial`                                          | [外观](#appearance)        |

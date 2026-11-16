@@ -1,6 +1,6 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.3.5**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.0**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
@@ -29,7 +29,7 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.3.5
+npm install @caojinyu111/vue-bim-viewer@0.4.0
 ```
 
 Vue **3.5.43** 和 Three.js **0.183.1** 是精确版本的共享 peerDependencies；npm 7+ 在宿主未安装时会自动补齐，保持单实例。three-tile **0.12.2** 与 GIS 投影依赖随 SDK 安装，three-tile 随 SDK 构建。
@@ -156,7 +156,7 @@ const savedView = viewer.value.getViewState()
 viewer.value.setViewState(savedView, { duration: 0 })
 ```
 
-0.3.5 起 `initialView` 只接受 `ViewState`，旧的 `direction / fitPadding` 配置不再支持。省略 `initialView` 时 SDK 自动适配；视角快照使用原模型坐标，宿主应按模型 `modelId` 和 `revision` 管理保存记录。
+`initialView` 只接受 `ViewState`，旧的 `direction / fitPadding` 配置不再支持。省略 `initialView` 时 SDK 自动适配；视角快照使用原模型坐标，宿主应按模型 `modelId` 和 `revision` 管理保存记录。
 
 ## 视角缩放
 
@@ -260,12 +260,13 @@ const gis = {
 
 `cluster.members` 提供只读的 `id`、`label`、`data` 视图；业务变化通过原始 `markers` 更新。插槽位于 SDK 按钮内部，请使用展示元素或组件，不嵌套按钮、链接或输入框，也无需再次绑定定位。未提供插槽时保留默认数量圆点；默认皮肤可通过宿主 CSS 覆盖配色和尺寸，图标及业务内容可通过自定义插槽实现；按钮尺寸不影响聚合半径，详见 [插槽及样式契约](./API.md#cluster-slot)。
 
-## 0.3.5 变化与接入注意事项
+## 0.4.0 变化与接入注意事项
 
 - 提供 `zoomIn()` / `zoomOut()` 实例方法，支持倍率、过渡时长和连续调用，宿主自行提供缩放按钮。
 - 提供可选 Marker 聚合、分页成员列表和 `marker-cluster` 展示插槽；聚合默认关闭，默认半径为 48 CSS 像素。
 - 提供构件连接线、每段方向箭头及可选循环光点，支持多条线独立替换、删除和清空，通过公开组件实例接入。
-- 聚合默认外观通过 CSS 覆盖，自定义内容通过插槽。如果宿主曾配置开发阶段的 `--mv-cluster-*` 变量，请迁移为 CSS 覆盖；0.3.5 不读取这些变量。其他功能的 CSS 变量保持不变。
+- 渲染增强支持环境光照、柔和补光、Neutral 色调映射、SMAA、GTAO 和投影阴影；增强默认关闭，AO 与阴影需要分别显式开启。
+- 聚合默认外观通过 CSS 覆盖，自定义内容通过插槽。`--mv-cluster-*` 不是公开配置，宿主应使用 CSS 覆盖或自定义插槽。
 
 完整参数、默认值和调用约束见 [API 文档](./API.md)。
 
@@ -284,7 +285,7 @@ IFC、RVT 等源 BIM 文件需先转换为支持的 GLB/glTF。基础模型显�
 
 ## 文档
 
-[API 使用文档](./API.md) 包含全部 8 项 Props、26 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
+[API 使用文档](./API.md) 包含全部 9 项 Props、26 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
 
 维护者可在源码仓库中查阅 `DEVELOPMENT.md`，了解构建、宿主联调和发布流程；该文件不包含在 npm 分发包中。
 
