@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.4.0**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
+本工程为 `@caojinyu111/vue-bim-viewer` 的独立 SDK 源码，当前版本 **0.4.1**。运行代码使用 JavaScript，公开类型声明单独维护。浏览器预览由外部 Vue 应用提供。
 
 ## 环境与安装
 
@@ -11,7 +11,7 @@ npm ci
 npm run check
 ```
 
-依赖版本由锁文件固定。Vue 3.5.43、Three.js 0.183.1 的 peerDependencies 与开发依赖均固定版本，@types/three 固定 0.183.1；three-tile 0.12.2 是普通依赖。Vue/Three 构建时排除，three-tile（含 plugin）参与构建，保留 ESM/CJS。更新依赖时同时验证消费兼容性。
+开发依赖版本由锁文件固定，当前验证使用 Vue 3.5.43、Three.js 0.183.1 和 @types/three 0.183.1；公开 peerDependencies 支持 Vue `>=3.5.0 <4.0.0` 与 Three.js `>=0.163.0 <0.184.0`。three-tile 0.12.2 是构建依赖，含 plugin 的代码参与构建并随 `dist` 分发，不作为消费项目的运行时依赖传递。Vue/Three 构建时排除，保留 ESM/CJS。更新依赖时同时验证最低版本和当前验证版本的消费兼容性。
 
 ## 工程结构
 
@@ -110,15 +110,21 @@ npm run types:watch
 
 安装包验收无论成功或失败，都在宿主根目录执行 `npm run link` 和 `npm run check:link` 恢复并确认链接，核对 manifest 和锁文件未变。不要用直接导入 SDK 源码的方式代替公开包入口验证。
 
+## 0.4.1 版本内容
+
+本版将 Vue peerDependencies 放宽为 `>=3.5.0 <4.0.0`，将 Three.js peerDependencies 放宽为 `>=0.163.0 <0.184.0`；开发验证仍固定使用 Vue 3.5.43、Three.js 0.183.1 和 @types/three 0.183.1。three-tile 0.12.2 从运行时依赖移为构建依赖，包含 plugin 的代码随 `dist` 分发，消费项目不需要单独安装 three-tile。
+
+兼容范围必须在外部宿主中分别验证最低版本和当前验证版本；源码构建通过不代表所有 Three.js 版本的浏览器功能均已验收。
+
 ## 0.4.0 版本内容
 
 本版纳入独立缩放方法、用户缩小上限、可选 Marker 聚合、自定义聚合插槽、模型坐标视角快照，以及按构件 ID 绘制的空间连接线、方向箭头和可选循环光点。渲染增强支持环境光照、柔和补光、Neutral 色调映射、SMAA、GTAO 和投影阴影，但默认全部关闭；AO 和阴影需要分别显式开启。聚合默认关闭、半径默认 48 CSS 像素；默认按钮外观采用固定默认值，由宿主 CSS 覆盖或插槽扩展。
 
 运行时入口保持 `MineViewer`、`flattenComponentTree`、`createGisPlacement`，内部缩放与聚合工厂不作为包导出。保持依赖版本和外观记录格式，清除无条件输出模型及构件数据的调试日志。`initialView` 已升级为 `ViewState`，旧的 `direction / fitPadding` 配置不再兼容；宿主未提供快照时使用自动适配。功能验收、浏览器兼容和性能范围以实际交付结果为准。
 
-## 0.4.0 打包与发布
+## 0.4.1 打包与发布
 
-确认包配置与锁文件中的版本均为 `0.4.0`，然后执行：
+确认包配置与锁文件中的版本均为 `0.4.1`，然后执行：
 
 ```sh
 npm run check
@@ -129,7 +135,7 @@ npm pack --dry-run
 
 检查包文件列表：应仅包含完整 `dist/`、`README.md`、`API.md`、`LICENSE` 和 `package.json`。共享分块、动态插件分块及声明必须完整，源码、测试、开发指南、本机配置和验收记录不进入 npm 包。
 
-需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.4.0.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
+需要生成安装包时，用 `npm pack --pack-destination <仓库外输出目录>`，生成 `caojinyu111-vue-bim-viewer-0.4.1.tgz`，不在本项目保留历史安装包；安装包须通过实际消费应用验证。浏览器、类型或性能验证只记录实际覆盖的范围，不宣称未执行的检查通过。
 
 使用具备包发布权限的 npm 账号发布已验证的安装包：
 

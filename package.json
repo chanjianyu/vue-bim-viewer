@@ -1,6 +1,6 @@
 {
   "name": "@caojinyu111/vue-bim-viewer",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "JavaScript BIM viewer SDK for Vue 3 and Three.js with TypeScript declarations",
   "type": "module",
   "license": "MIT",
@@ -35,20 +35,20 @@
     "check": "npm run format:check && npm run build"
   },
   "peerDependencies": {
-    "three": "0.183.1",
-    "vue": "3.5.43"
+    "three": ">=0.163.0 <0.184.0",
+    "vue": ">=3.5.0 <4.0.0"
   },
   "devDependencies": {
     "@types/three": "0.183.1",
     "@vitejs/plugin-vue": "6.0.10",
     "three": "0.183.1",
+    "three-tile": "0.12.2",
     "vite": "8.3.4",
     "vue": "3.5.43",
     "prettier": "3.9.10"
   },
   "dependencies": {
-    "proj4": "2.22.0",
-    "three-tile": "0.12.2"
+    "proj4": "2.22.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

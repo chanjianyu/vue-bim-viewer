@@ -1,6 +1,6 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.0**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.1**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
@@ -29,22 +29,24 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.0
+npm install @caojinyu111/vue-bim-viewer@0.4.1
 ```
 
-Vue **3.5.43** 和 Three.js **0.183.1** 是精确版本的共享 peerDependencies；npm 7+ 在宿主未安装时会自动补齐，保持单实例。three-tile **0.12.2** 与 GIS 投影依赖随 SDK 安装，three-tile 随 SDK 构建。
+最低支持 Vue **3.5.0** 和 Three.js **0.163.0**；当前验证版本为 Vue **3.5.43** 和 Three.js **0.183.1**。两者都是宿主提供的 peerDependencies，范围分别为 `>=3.5.0 <4.0.0` 和 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装它；Proj4js 仍由 SDK 管理。
 
-已有 Vue 或 Three.js 的项目需要先统一版本，避免依赖冲突：
+已有 Vue 或 Three.js 的项目可以选择兼容范围内的版本；最低版本组合示例：
 
 ```sh
-npm install vue@3.5.43 three@0.183.1
+npm install vue@3.5.0 three@0.163.0
 ```
 
 TypeScript 项目另外安装匹配的 Three.js 类型声明：
 
 ```sh
-npm install --save-dev @types/three@0.183.1
+npm install --save-dev @types/three@0.163.0
 ```
+
+TypeScript 项目应安装与宿主 Three.js 版本匹配的 `@types/three`；当前开发验证使用 `@types/three@0.183.1`。
 
 ## 快速开始
 
@@ -260,6 +262,12 @@ const gis = {
 
 `cluster.members` 提供只读的 `id`、`label`、`data` 视图；业务变化通过原始 `markers` 更新。插槽位于 SDK 按钮内部，请使用展示元素或组件，不嵌套按钮、链接或输入框，也无需再次绑定定位。未提供插槽时保留默认数量圆点；默认皮肤可通过宿主 CSS 覆盖配色和尺寸，图标及业务内容可通过自定义插槽实现；按钮尺寸不影响聚合半径，详见 [插槽及样式契约](./API.md#cluster-slot)。
 
+## 0.4.1 变化与接入注意事项
+
+- Vue peerDependencies 放宽为 `>=3.5.0 <4.0.0`。
+- Three.js peerDependencies 放宽为 `>=0.163.0 <0.184.0`；当前验证版本仍为 `0.183.1`。
+- `three-tile@0.12.2` 作为构建依赖参与打包并随 `dist` 分发，消费项目不需要单独安装。
+
 ## 0.4.0 变化与接入注意事项
 
 - 提供 `zoomIn()` / `zoomOut()` 实例方法，支持倍率、过渡时长和连续调用，宿主自行提供缩放按钮。
@@ -274,8 +282,8 @@ const gis = {
 
 | 项目     | 要求                                |
 | -------- | ----------------------------------- |
-| Vue      | 精确 3.5.43                         |
-| Three.js | 精确 0.183.1                        |
+| Vue      | 最低 3.5.0；当前验证 3.5.43         |
+| Three.js | 最低 0.163.0；当前验证 0.183.1      |
 | 浏览器   | 基础模型显示支持 WebGL2；GIS 需要额外浏览器 API |
 | 布局     | 显式导入样式，容器宽高均非零        |
 | SSR      | 在客户端挂载组件                    |

@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.4.0**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.4.1**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -72,18 +72,18 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.0
+npm install @caojinyu111/vue-bim-viewer@0.4.1
 ```
 
-运行环境要求 Vue **3.5.43**、Three.js **0.183.1** 和支持 WebGL2 的浏览器。Vue 与 Three.js 为精确版本的共享 peerDependencies，npm 7+ 会补齐尚未安装的 peer；已有不兼容版本的宿主先执行 `npm install vue@3.5.43 three@0.183.1`。three-tile **0.12.2** 与 Proj4js 随 SDK 安装，three-tile 随 SDK 构建。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
+运行环境最低要求 Vue **3.5.0**、Three.js **0.163.0** 和支持 WebGL2 的浏览器；当前验证版本为 Vue **3.5.43**、Three.js **0.183.1**。Vue 的 peer 范围为 `>=3.5.0 <4.0.0`，Three.js 的 peer 范围为 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装；Proj4js 仍由 SDK 管理。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
 
 TypeScript 应用额外安装 Three.js 类型声明：
 
 ```sh
-npm install --save-dev @types/three@0.183.1
+npm install --save-dev @types/three@0.163.0
 ```
 
-公开声明引用 Three.js 类型。`@types/three` 是 SDK 的开发依赖，不会随运行依赖传递，消费项目需自行安装。JavaScript 项目需要完整 JSDoc 提示时也可安装。
+公开声明引用 Three.js 类型。消费项目需自行安装与宿主 Three.js 版本匹配的 `@types/three`；当前 SDK 开发验证使用 `@types/three@0.183.1`。JavaScript 项目需要完整 JSDoc 提示时也可安装。
 
 组件挂载前应导入样式并确保容器宽高非零；SSR 项目在客户端挂载。ESM/CJS 模块可被读取不代表提供服务端三维渲染。
 
