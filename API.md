@@ -30,7 +30,7 @@ SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。�
 | 能力       | 当前支持内容                                                    | 使用入口                                         |
 | ---------- | --------------------------------------------------------------- | ------------------------------------------------ |
 | 模型加载   | 通过 Manifest 加载 GLB/glTF，处理外部 buffer/image 和可选元数据 | `MineViewer`、`modelSource`                      |
-| 三维浏览   | 拖动旋转、滚轮及方法缩放、右键平移、容器尺寸适配、初始全模型视角      | `initialView`、`resetView()`、`zoomIn()`、`zoomOut()`                     |
+| 三维浏览   | 拖动旋转、滚轮及方法缩放、中键或右键平移、容器尺寸适配、初始全模型视角      | `initialView`、`resetView()`、`zoomIn()`、`zoomOut()`                     |
 | 视角导航   | Home、26 方向骰子、六个标准方向方法及实时显隐                   | `navigation`、`setViewDirection()`               |
 | 构件树     | 内置目录、名称搜索、分支显隐、选中定位及完整树查询              | `navigation.componentTree`、`getComponentTree()` |
 | 场景查询   | 源场景结构快照、活的 Three.js 根节点、对象对应 ID               | `getSceneTree()` 等                              |

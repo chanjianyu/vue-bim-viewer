@@ -1,5 +1,6 @@
 import {
   Box3,
+  MOUSE,
   PerspectiveCamera,
   Raycaster,
   Scene,
@@ -43,10 +44,14 @@ export function createViewer(
   const connections = createConnectionLines()
   renderer.outputColorSpace = SRGBColorSpace
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.domElement.setAttribute('aria-label', '三维模型：拖动旋转，滚轮缩放，右键平移')
+  renderer.domElement.setAttribute(
+    'aria-label',
+    '三维模型：左键拖动旋转，中键或右键拖动平移，滚轮缩放',
+  )
   renderer.domElement.setAttribute('role', 'img')
   container.appendChild(renderer.domElement)
   const controls = new OrbitControls(camera, renderer.domElement)
+  controls.mouseButtons.MIDDLE = MOUSE.PAN
   controls.enableDamping = true
   controls.dampingFactor = 0.09
   const motion = createCameraMotion(camera, controls)
