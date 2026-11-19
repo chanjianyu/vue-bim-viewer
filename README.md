@@ -1,6 +1,6 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.1**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.2**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
@@ -29,7 +29,7 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.1
+npm install @caojinyu111/vue-bim-viewer@0.4.2
 ```
 
 最低支持 Vue **3.5.0** 和 Three.js **0.163.0**；当前验证版本为 Vue **3.5.43** 和 Three.js **0.183.1**。两者都是宿主提供的 peerDependencies，范围分别为 `>=3.5.0 <4.0.0` 和 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装它；Proj4js 仍由 SDK 管理。
@@ -261,6 +261,12 @@ const gis = {
 ```
 
 `cluster.members` 提供只读的 `id`、`label`、`data` 视图；业务变化通过原始 `markers` 更新。插槽位于 SDK 按钮内部，请使用展示元素或组件，不嵌套按钮、链接或输入框，也无需再次绑定定位。未提供插槽时保留默认数量圆点；默认皮肤可通过宿主 CSS 覆盖配色和尺寸，图标及业务内容可通过自定义插槽实现；按钮尺寸不影响聚合半径，详见 [插槽及样式契约](./API.md#cluster-slot)。
+
+## 0.4.2 变化与接入注意事项
+
+- 鼠标左键拖动继续旋转模型。
+- 鼠标中键拖动改为与右键相同的平移操作；滚轮缩放保持不变。
+- 更新画布无障碍说明，明确左键旋转、中键或右键平移及滚轮缩放。
 
 ## 0.4.1 变化与接入注意事项
 

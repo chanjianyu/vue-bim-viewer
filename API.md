@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.4.1**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.4.2**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -72,7 +72,7 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.1
+npm install @caojinyu111/vue-bim-viewer@0.4.2
 ```
 
 运行环境最低要求 Vue **3.5.0**、Three.js **0.163.0** 和支持 WebGL2 的浏览器；当前验证版本为 Vue **3.5.43**、Three.js **0.183.1**。Vue 的 peer 范围为 `>=3.5.0 <4.0.0`，Three.js 的 peer 范围为 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装；Proj4js 仍由 SDK 管理。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
