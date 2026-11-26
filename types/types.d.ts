@@ -54,6 +54,36 @@ export interface RenderingOptions {
   /** 默认 1；增强模式曝光，必须是有限正数，非法值回退 1。 */
   exposure?: number
 }
+export interface TechVisualOptions {
+  /** 默认 false；显式开启模型科技材质和路线边缘线。 */
+  enabled?: boolean
+  /** cyber 为深色科技风，minimal 为轻度暗化；默认 cyber。 */
+  preset?: 'cyber' | 'minimal'
+  model?: {
+    /** 模型最终透明度倍率，默认 cyber 0.34、minimal 0.48。 */
+    opacity?: number
+    /** #RRGGBB，混入模型颜色的深色调。 */
+    tint?: string
+    /** 亮度倍率，0–2；默认 cyber 0.62、minimal 0.78。 */
+    brightness?: number
+    /** 0–1，0 为灰度；默认 cyber 0.32、minimal 0.58。 */
+    saturation?: number
+    edges?: {
+      /** 默认 true。 */
+      enabled?: boolean
+      /** 默认 connected；仅可见连接线的引用构件及后代，all 绘制整个模型。 */
+      scope?: 'connected' | 'all'
+      /** #RRGGBB；默认 cyber #58e6ff、minimal #7dd3fc。 */
+      color?: string
+      /** 0–1；默认 cyber 0.78、minimal 0.45。 */
+      opacity?: number
+      /** CSS 像素，0.1–20；默认 cyber 1.2、minimal 1。 */
+      width?: number
+      /** 法线夹角阈值，0–180 度，默认 25；越大保留的棱边越少。 */
+      thresholdAngle?: number
+    }
+  }
+}
 export interface Appearance {
   visible: boolean
   /** 半透明固定为原材质不透明度的 50%；false 保留原材质。 */

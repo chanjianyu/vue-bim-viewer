@@ -1,6 +1,6 @@
 # @caojinyu111/vue-bim-viewer
 
-基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.4.2**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
+基于 Vue 3 与 Three.js 的 JavaScript BIM 模型浏览 SDK。当前版本 **0.5.0**，提供 ESM、CommonJS、独立样式与 TypeScript 类型声明。
 
 适用于将静态 GLB/glTF 模型嵌入业务系统，通过组件参数、事件和实例方法实现构件查询、选择、外观控制及业务标记。
 
@@ -12,6 +12,7 @@
 - **构件目录**：左上角内置可搜索构件树，支持整组显隐、两档透明切换、选中定位及与宿主外观同步。
 - **构件选择**：内置青绿色表面高亮与浅绿色细轮廓，支持三维点击、构件树及 API 选择；不需要宿主配置。
 - **渲染增强**：默认关闭，使用原有基础效果；可主动开启中性环境光照、柔和补光、色调映射与 SMAA，并独立开启轻度 GTAO、柔和投影阴影或调整曝光。
+- **科技视觉**：默认关闭；可显式开启深色低饱和半透明模型、路线构件局部边缘线及可配置的科技连接线组合，不修改外观差异状态。
 - **外观管理**：显隐、颜色、不透明/半透明两档状态、批量修改，以及外观差异的导出、合并导入和恢复。
 - **业务标记**：模型坐标或构件锚点定位，支持自定义标签与弹窗插槽。
 - **标记聚合**：可选按屏幕距离聚合，点击拉近；重合或无法拆分时显示分页成员列表，默认关闭。
@@ -29,7 +30,7 @@
 ## 安装
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.2
+npm install @caojinyu111/vue-bim-viewer@0.5.0
 ```
 
 最低支持 Vue **3.5.0** 和 Three.js **0.163.0**；当前验证版本为 Vue **3.5.43** 和 Three.js **0.183.1**。两者都是宿主提供的 peerDependencies，范围分别为 `>=3.5.0 <4.0.0` 和 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装它；Proj4js 仍由 SDK 管理。
@@ -185,10 +186,12 @@ viewer.value.zoomOut({ duration: 0 })
 const result = viewer.value.setConnectionLine({
   id: 'route-1',
   componentIds: ['component-a', 'component-b', 'component-c'],
-  color: '#ffb347',
-  width: 3,
-  showArrows: true,
-  flow: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+  visual: {
+    preset: 'classic',
+    core: { color: '#ffb347', width: 3, opacity: 1 },
+    arrows: { enabled: true },
+    pulse: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+  },
 })
 if (!result.success) console.warn(result.error, result.unknownIds, result.invalidAnchorIds)
 
@@ -196,9 +199,30 @@ viewer.value.removeConnectionLine('route-1')
 viewer.value.clearConnectionLines()
 ```
 
-自身是 Mesh 的构件使用现有 `center`，其他节点使用自身 `origin`，即使其后代包含 Mesh。SDK 自动处理模型展示偏移。线条默认始终可见，不受构件隐藏、透明或选中状态影响；相机裁剪和视口边界仍生效。每段箭头为 10×8 CSS 像素，投影长度不足 24px 或端点位于近裁剪面之前时隐藏箭头。
+需要更强的科技感时，显式开启 `techVisual`，再给连接线配置 `visual.preset: 'cyber'`：
 
-光点动画默认关闭，只有 `flow.enabled: true` 开启。每条路径一个光点，按构件顺序沿空间折线匀速移动，默认单圈 3000ms、直径 8 CSS 像素、白色；到终点直接回到起点，不绘制首尾连接段。光点继承线条显隐和透明度，与箭头开关独立。成功替换后从起点重播，失败保留旧进度，相机操作不重置进度。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停，恢复后继续；减少动态效果下保留静态光点。启用后通过 Viewer 共享帧持续渲染，关闭或删除最后一条动画后停止光点续帧。
+```vue
+<MineViewer
+  :model-source="modelSource"
+  :tech-visual="{
+    enabled: true,
+    preset: 'cyber',
+    model: {
+      opacity: 0.34,
+      tint: '#10243d',
+      edges: { scope: 'connected', color: '#58e6ff' },
+    },
+  }"
+/>
+```
+
+`scope: 'connected'` 只为当前可见连接线引用的构件绘制边缘；`scope: 'all'` 才绘制整个模型。科技材质是临时渲染层，不会改变 `getComponentAppearance()` 或宿主保存的外观记录。连接线的 `visual` 支持 `classic` 和 `cyber` 两种预设，所有线路样式统一放入 `core`、`halo`、`arrows`、`pulse`。完整字段见 [科技视觉](./API.md#tech-visual) 和 [连接线 API](./API.md#connection-lines)。
+
+0.5.0 已移除连接线顶层的 `color`、`width`、`opacity`、`showArrows` 和 `flow`；宿主必须迁移至 `visual`，动画单圈时长使用 `visual.pulse.duration`。传入已删除字段会返回失败并保留原线，公开类型不再导出 `ConnectionFlowOptions`。
+
+自身是 Mesh 的构件使用现有 `center`，其他节点使用自身 `origin`，即使其后代包含 Mesh。SDK 自动处理模型展示偏移。线条默认始终可见，不受构件隐藏、透明或选中状态影响；相机裁剪和视口边界仍生效。`classic` 每段中点显示一个 10×8 CSS 像素箭头，投影长度不足 24px 或端点位于近裁剪面之前时隐藏；`cyber` 使用按屏幕长度重复的箭头，尺寸和间距可配置。
+
+光点动画默认关闭，只有 `visual.pulse.enabled: true` 开启。每条路径一个光点，按构件顺序沿空间折线匀速移动，基础单圈时长默认 3000ms，实际周期为 `pulse.duration / pulse.speed`；光点默认白色，classic 直径 8 CSS 像素、无尾迹，cyber 直径 12 CSS 像素、尾迹 90px。到终点直接回到起点，不绘制首尾连接段。光点继承线条的 `visible` 和 `visual.core.opacity`，与箭头开关独立。成功替换后从起点重播，失败保留旧进度，相机操作不重置进度。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停，恢复后继续；减少动态效果下保留静态光点。启用后通过 Viewer 共享帧持续渲染，关闭或删除最后一条动画后停止光点续帧。
 
 无效配置、未知构件、无效锚点或全部点重合都会拒绝本次更新并保留原线。成功加载新模型会清空连接线，失败重载保留；宿主自行按模型身份和 revision 保存并重新提交配置。完整参数与限制见 [连接线 API](./API.md#connection-lines)。
 
@@ -262,6 +286,13 @@ const gis = {
 
 `cluster.members` 提供只读的 `id`、`label`、`data` 视图；业务变化通过原始 `markers` 更新。插槽位于 SDK 按钮内部，请使用展示元素或组件，不嵌套按钮、链接或输入框，也无需再次绑定定位。未提供插槽时保留默认数量圆点；默认皮肤可通过宿主 CSS 覆盖配色和尺寸，图标及业务内容可通过自定义插槽实现；按钮尺寸不影响聚合半径，详见 [插槽及样式契约](./API.md#cluster-slot)。
 
+## 0.5.0 变化与接入注意事项
+
+- 新增默认关闭的 `techVisual` Prop：`cyber` / `minimal` 预设、模型色调、亮度、饱和度和透明度倍率。
+- 支持连接线相关构件或整个模型的边缘线，可配置颜色、透明度、CSS 像素宽度及夹角阈值。
+- `setConnectionLine()` 统一使用 `visual`：`classic` / `cyber`、核心线、局部柔光、屏幕箭头、流光时长与速度及沿路径尾迹；删除顶层样式、箭头和 `flow` 配置，宿主需迁移。
+- 科技效果不写入外观记录；模型与线路分别显式配置，流光动画默认关闭。路线保持固定，模型位置改变后由宿主重新提交。
+
 ## 0.4.2 变化与接入注意事项
 
 - 鼠标左键拖动继续旋转模型。
@@ -299,7 +330,7 @@ IFC、RVT 等源 BIM 文件需先转换为支持的 GLB/glTF。基础模型显�
 
 ## 文档
 
-[API 使用文档](./API.md) 包含全部 9 项 Props、26 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
+[API 使用文档](./API.md) 包含全部 10 项 Props、26 个实例方法、10 个事件、3 个插槽、工具函数、数据结构及接入示例。
 
 维护者可在源码仓库中查阅 `DEVELOPMENT.md`，了解构建、宿主联调和发布流程；该文件不包含在 npm 分发包中。
 

@@ -1,4 +1,13 @@
 import { Vector3 } from 'three'
+import { resolveConnectionVisual } from './connection-visual.js'
+
+const removedFields = {
+  color: 'visual.core.color',
+  width: 'visual.core.width',
+  opacity: 'visual.core.opacity',
+  showArrows: 'visual.arrows.enabled',
+  flow: 'visual.pulse（单圈时长使用 visual.pulse.duration）',
+}
 
 export function connectionLineFailure(error, unknownIds = [], invalidAnchorIds = []) {
   return { success: false, error, unknownIds, invalidAnchorIds }
@@ -9,6 +18,9 @@ export function resolveConnectionLine(value, components, offset) {
   const fail = (error) => ({ result: connectionLineFailure(error) })
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return fail('连接线配置必须是对象')
+  for (const [field, replacement] of Object.entries(removedFields)) {
+    if (Object.hasOwn(value, field)) return fail(`${field} 已移除，请使用 ${replacement}`)
+  }
   const { id, componentIds } = value
   if (typeof id !== 'string' || !id.trim()) return fail('连接线 id 必须为非空字符串')
   if (
@@ -20,41 +32,12 @@ export function resolveConnectionLine(value, components, offset) {
   const options = {
     id,
     componentIds: [...componentIds],
-    color: value.color === undefined ? '#ffb347' : value.color,
-    width: value.width === undefined ? 3 : value.width,
-    opacity: value.opacity === undefined ? 1 : value.opacity,
     visible: value.visible === undefined ? true : value.visible,
-    showArrows: value.showArrows === undefined ? true : value.showArrows,
   }
-  if (typeof options.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(options.color))
-    return fail('color 必须使用 #RRGGBB 格式')
-  if (!Number.isFinite(options.width) || options.width <= 0)
-    return fail('width 必须为有限且大于 0 的数值')
-  if (!Number.isFinite(options.opacity) || options.opacity < 0 || options.opacity > 1)
-    return fail('opacity 必须为 0–1 的有限数值')
-  if (typeof options.visible !== 'boolean' || typeof options.showArrows !== 'boolean')
-    return fail('visible 和 showArrows 必须为布尔值')
-  const flow = value.flow
-  if (
-    flow !== undefined &&
-    (!flow ||
-      typeof flow !== 'object' ||
-      ![Object.prototype, null].includes(Object.getPrototypeOf(flow)))
-  )
-    return fail('flow 必须为普通配置对象')
-  options.flow = {
-    enabled: flow?.enabled === undefined ? false : flow.enabled,
-    duration: flow?.duration === undefined ? 3000 : flow.duration,
-    size: flow?.size === undefined ? 8 : flow.size,
-    color: flow?.color === undefined ? '#ffffff' : flow.color,
-  }
-  if (typeof options.flow.enabled !== 'boolean') return fail('flow.enabled 必须为布尔值')
-  if (!Number.isFinite(options.flow.duration) || options.flow.duration <= 0)
-    return fail('flow.duration 必须为有限且大于 0 的数值')
-  if (!Number.isFinite(options.flow.size) || options.flow.size <= 0)
-    return fail('flow.size 必须为有限且大于 0 的数值')
-  if (typeof options.flow.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(options.flow.color))
-    return fail('flow.color 必须使用 #RRGGBB 格式')
+  if (typeof options.visible !== 'boolean') return fail('visible 必须为布尔值')
+  const visual = resolveConnectionVisual(value.visual)
+  if (visual.error) return fail(visual.error)
+  options.visual = visual.options
   if (!offset?.isVector3 || !offset.toArray().every(Number.isFinite))
     return fail('模型展示偏移无效')
 

@@ -15,6 +15,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { isOpaqueSurface, ModelAmbientOcclusion } from './ambient-occlusion.js'
+import { createTechVisual } from './tech-visual.js'
 
 export function resolveRendering(value) {
   return {
@@ -37,6 +38,25 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
   const beauty = new RenderPass(scene, camera)
   const output = new OutputPass()
   const clearColor = new Color()
+  const techVisual = createTechVisual(invalidate)
+  const drawBeauty = beauty.render.bind(beauty)
+  beauty.render = (...args) => {
+    drawBeauty(...args)
+    techVisual.renderEdges(renderer, camera)
+  }
+  const previousShaderError = renderer.debug.onShaderError
+  renderer.debug.onShaderError = (gl, program, vertex, fragment) => {
+    if (gl.getShaderSource(fragment)?.includes('bimTechTint')) {
+      if (techVisual.fail(gl.getProgramInfoLog(program))) invalidateShadows()
+    } else if (previousShaderError) previousShaderError(gl, program, vertex, fragment)
+    else
+      console.error(
+        '[vue-bim-viewer] Shader 编译失败：',
+        gl.getProgramInfoLog(program),
+        gl.getShaderInfoLog(vertex),
+        gl.getShaderInfoLog(fragment),
+      )
+  }
   let options = resolveRendering()
   let enhancement,
     failed = false,
@@ -47,6 +67,13 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
     width = 1,
     height = 1
   let shadowsDirty = true
+  let shadowRevision = 0
+  let shadowSurfaces = new Map()
+
+  function invalidateShadows() {
+    shadowsDirty = true
+    shadowRevision++
+  }
 
   function rebuildPasses() {
     composer.passes = [beauty]
@@ -62,7 +89,8 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
     key.shadow.mapPass?.dispose()
     key.shadow.map = null
     key.shadow.mapPass = null
-    shadowsDirty = true
+    shadowSurfaces.clear()
+    invalidateShadows()
   }
 
   function releaseEnhancement() {
@@ -122,7 +150,7 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
     key.shadow.normalBias = ((radius * 2.1) / size) * 0.75
     key.shadow.radius = 2
     key.shadow.intensity = 0.65
-    shadowsDirty = true
+    invalidateShadows()
   }
 
   function initialize() {
@@ -217,6 +245,12 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
       configure()
       invalidate()
     },
+    setTechVisual(value) {
+      if (techVisual.set(value)) invalidateShadows()
+    },
+    setConnectedMeshes(values) {
+      techVisual.setConnectedMeshes(values)
+    },
     setModel(root) {
       releaseShadow()
       meshes = []
@@ -224,16 +258,16 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
         if (object.isMesh) meshes.push(object)
       })
       bounds = new Box3().setFromObject(root, true)
+      techVisual.setModel(root)
       enhancement?.ao?.setModel(meshes, bounds)
       if (enhancement && options.shadows) fitShadow()
     },
-    invalidateShadows() {
-      shadowsDirty = true
-    },
+    invalidateShadows,
     resize(nextWidth, nextHeight) {
       width = nextWidth
       height = nextHeight
       composer.setSize(width, height)
+      techVisual.resize(width, height)
     },
     render(selected) {
       const restored = []
@@ -247,27 +281,44 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
         renderer.setRenderTarget(target)
       }
       try {
+        techVisual.beginRender(outline.selectedObjects)
         outline.enabled = selected
         if (enhancement) {
+          const nextShadowSurfaces = new Map()
           if (options.shadows) {
             for (const mesh of meshes) {
               restored.push([mesh, mesh.castShadow, mesh.receiveShadow])
               const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
               // 混合透明材质的 Mesh 保守排除投影，避免透明材质组成为实心阴影。
-              mesh.castShadow = mesh.receiveShadow = materials.every(isOpaqueSurface)
+              const opaque = materials.every(isOpaqueSurface)
+              mesh.castShadow = mesh.receiveShadow = opaque
+              nextShadowSurfaces.set(mesh, opaque)
+              // 选择材质和科技材质只在本帧生效，必须按实际投影资格刷新缓存。
+              if (shadowSurfaces.get(mesh) !== opaque) invalidateShadows()
             }
             renderer.shadowMap.needsUpdate = shadowsDirty
           }
+          const revision = shadowRevision
           composer.render()
-          shadowsDirty = false
+          // Shader 错误回调可能在绘制期间使缓存失效，不能覆盖它请求的下一帧更新。
+          if (options.shadows && enhancement && revision === shadowRevision) {
+            shadowSurfaces = nextShadowSurfaces
+            shadowsDirty = false
+          }
         } else if (selected) composer.render()
-        else renderer.render(scene, camera)
+        else {
+          renderer.render(scene, camera)
+          techVisual.renderEdges(renderer, camera)
+        }
       } catch (cause) {
-        if (!enhancement) throw cause
-        fallback(cause)
+        const recovered = techVisual.fail(cause)
+        techVisual.endRender()
+        if (!enhancement && !recovered) throw cause
+        if (enhancement) fallback(cause)
         restoreRenderer()
         renderer.render(scene, camera)
       } finally {
+        techVisual.endRender()
         for (const [mesh, cast, receive] of restored) {
           mesh.castShadow = cast
           mesh.receiveShadow = receive
@@ -278,6 +329,8 @@ export function createRendering(scene, camera, renderer, outline, invalidate) {
     dispose() {
       destroyed = true
       releaseEnhancement()
+      techVisual.dispose()
+      renderer.debug.onShaderError = previousShaderError
       composer.dispose()
       output.dispose()
       scene.remove(hemisphere, key, fill, key.target)

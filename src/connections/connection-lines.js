@@ -1,7 +1,6 @@
 import { Box3, Group, Scene, Sphere, Vector4 } from 'three'
-import { Line2 } from 'three/addons/lines/Line2.js'
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js'
-import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
+import { createConnectionStroke } from './connection-stroke.js'
 import { createConnectionArrows } from './connection-arrows.js'
 import { createConnectionFlow } from './connection-flow.js'
 import { connectionLineFailure, resolveConnectionLine } from './connection-line-data.js'
@@ -19,8 +18,8 @@ export function createConnectionLines() {
     height = 0
   function release(entry) {
     entry.root.removeFromParent()
-    entry.line.geometry.dispose()
-    entry.line.material.dispose()
+    entry.geometry.dispose()
+    entry.strokes.forEach((stroke) => stroke.material.dispose())
     entry.arrows?.dispose()
     entry.flow?.dispose()
   }
@@ -45,27 +44,56 @@ export function createConnectionLines() {
       const resolved = resolveConnectionLine(value, components, model.offset)
       if (resolved.result) return resolved.result
       const { options, points, path } = resolved
-      let geometry, material, arrows, flow
+      let geometry, arrows, flow
+      const strokes = []
       try {
         geometry = new LineGeometry()
         geometry.setPositions(points.flatMap((point) => point.toArray()))
-        material = new LineMaterial({
-          color: options.color,
-          linewidth: options.width,
-          worldUnits: false,
-          opacity: options.opacity,
-          transparent: true,
-          depthTest: false,
-          depthWrite: false,
-          toneMapped: false,
-        })
-        const line = new Line2(geometry, material)
-        line.frustumCulled = false
-        arrows = options.showArrows ? createConnectionArrows(points, options) : undefined
-        flow = options.flow.enabled ? createConnectionFlow(points, path, options) : undefined
+        const visual = options.visual
+        const cyber = visual.preset === 'cyber'
+        if (cyber) {
+          if (visual.halo.enabled)
+            strokes.push(
+              createConnectionStroke(
+                geometry,
+                {
+                  ...visual.halo,
+                  opacity: visual.halo.opacity * visual.core.opacity,
+                },
+                0,
+                true,
+              ),
+            )
+          strokes.push(
+            createConnectionStroke(
+              geometry,
+              {
+                color: '#071122',
+                width: visual.core.width + 3,
+                opacity: visual.core.opacity * 0.72,
+              },
+              1,
+            ),
+          )
+        }
+        strokes.push(createConnectionStroke(geometry, visual.core, 2))
+        if (cyber)
+          strokes.push(
+            createConnectionStroke(
+              geometry,
+              {
+                color: '#f6efff',
+                width: Math.max(0.7, visual.core.width * 0.28),
+                opacity: visual.core.opacity * 0.82,
+              },
+              3,
+            ),
+          )
+        arrows = visual.arrows.enabled ? createConnectionArrows(points, options) : undefined
+        flow = visual.pulse.enabled ? createConnectionFlow(points, path, options) : undefined
         const root = new Group()
-        root.visible = options.visible && options.opacity > 0
-        root.add(line)
+        root.visible = options.visible && visual.core.opacity > 0
+        root.add(...strokes)
         if (arrows) root.add(arrows.mesh)
         if (flow) root.add(flow.mesh)
         const sphere = new Box3().setFromPoints(points).getBoundingSphere(new Sphere())
@@ -74,11 +102,13 @@ export function createConnectionLines() {
         if (previous) release(previous)
         entries.set(options.id, {
           root,
-          line,
+          geometry,
+          strokes,
+          options,
           arrows,
           flow,
           sphere,
-          duration: options.flow.duration,
+          duration: options.visual.duration,
           elapsed: 0,
           lastFrame: undefined,
         })
@@ -86,7 +116,7 @@ export function createConnectionLines() {
         return { success: true, unknownIds: [], invalidAnchorIds: [] }
       } catch (error) {
         geometry?.dispose()
-        material?.dispose()
+        strokes.forEach((stroke) => stroke.material.dispose())
         arrows?.dispose()
         flow?.dispose()
         return connectionLineFailure(error instanceof Error ? error.message : '连接线创建失败')
@@ -140,6 +170,14 @@ export function createConnectionLines() {
       }
       return far
     },
+    getConnectedComponentIds() {
+      const ids = new Set()
+      entries.forEach(({ root, options }) => {
+        if (!root.visible || options.visual.core.opacity <= 0) return
+        options.componentIds.forEach((id) => ids.add(id))
+      })
+      return [...ids]
+    },
     render(renderer, camera) {
       if (
         disposed ||
@@ -160,8 +198,9 @@ export function createConnectionLines() {
         renderer.setRenderTarget(null)
         renderer.setViewport(0, 0, width, height)
         renderer.setScissorTest(false)
-        entries.forEach(({ root, arrows, flow, elapsed }) => {
+        entries.forEach(({ root, strokes, arrows, flow, elapsed }) => {
           if (!root.visible) return
+          strokes.forEach((stroke) => stroke.material.resolution.set(width, height))
           arrows?.update(camera, width, height)
           flow?.update(elapsed, camera, width, height)
         })

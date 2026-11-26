@@ -16,6 +16,7 @@ import type {
   NavigationOptions,
   ProjectedMarker,
   RenderingOptions,
+  TechVisualOptions,
   ViewerApi,
 } from './types.js'
 
@@ -28,6 +29,7 @@ type Props = {
   gis?: GisOptions
   background?: BackgroundOptions
   rendering?: RenderingOptions
+  techVisual?: TechVisualOptions
   navigation?: NavigationOptions
 }
 

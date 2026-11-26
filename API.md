@@ -1,6 +1,6 @@
 # API 与集成指南
 
-适用版本：**0.4.2**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
+适用版本：**0.5.0**。本文面向在 Vue 3 应用中集成 `@caojinyu111/vue-bim-viewer` 的开发者，说明模型资源约定、组件接口、业务接入方式及使用限制。
 
 SDK 使用 JavaScript 实现，同时提供独立的 TypeScript 类型声明。除 TypeScript 接入章节外，组件与业务示例均使用 JavaScript。快速安装见 [README](./README.md)；参数字段和可选性可结合发布包中的声明文件查阅。
 
@@ -72,7 +72,7 @@ import '@caojinyu111/vue-bim-viewer/style.css'
 在 Vue 应用中安装 SDK：
 
 ```sh
-npm install @caojinyu111/vue-bim-viewer@0.4.2
+npm install @caojinyu111/vue-bim-viewer@0.5.0
 ```
 
 运行环境最低要求 Vue **3.5.0**、Three.js **0.163.0** 和支持 WebGL2 的浏览器；当前验证版本为 Vue **3.5.43**、Three.js **0.183.1**。Vue 的 peer 范围为 `>=3.5.0 <4.0.0`，Three.js 的 peer 范围为 `>=0.163.0 <0.184.0`。`three-tile` **0.12.2** 参与 SDK 构建并已随 `dist` 打包，消费项目不需要单独安装；Proj4js 仍由 SDK 管理。启用 GIS 地图还需要 `fetch`、`createImageBitmap`、`AbortSignal.any`、`AbortSignal.timeout` 和 `OffscreenCanvas`；启用 DEM 额外需要 `DecompressionStream`。SSR 只能在客户端挂载组件。
@@ -329,9 +329,57 @@ async function refreshModel() {
 | `gis`              | `GisOptions`              | 不加载地图                                        | 可选天地图影像及 DEM，见 9.9、9.11                |
 | `background`       | `BackgroundOptions`       | `{ color: '#f4f7fb' }`                            | 深度监听，实时更新背景，不重载模型                |
 | `rendering`        | `RenderingOptions`        | `{ enabled: false, ambientOcclusion: false, shadows: false, exposure: 1 }` | 深度监听，实时调整通用渲染效果，不重载模型 |
+| `techVisual`      | `TechVisualOptions`      | `{ enabled: false }`                            | 深度监听，实时调整模型科技材质和路线边缘，不重载模型 |
 | `navigation`       | `NavigationOptions`       | `{ home: true, cube: true, componentTree: true }` | 构件目录、Home 与方向骰子分别实时显隐，不重载模型 |
 
-Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background`、`:rendering` 和 `:navigation`。
+Vue 模板中分别使用 `:model-source`、`:markers`、`:marker-clustering`、`:initial-view`、`:camera-transition`、`:gis`、`:background`、`:rendering`、`:tech-visual` 和 `:navigation`。
+
+<a id="tech-visual"></a>
+
+### 科技视觉
+
+`techVisual` 默认关闭。开启后 SDK 使用临时材质将模型压暗、降饱和并半透明，并根据连接线引用的构件绘制局部边缘线。该层不调用外观 API，不改变 `appearance-change`、`getComponentAppearance()` 或宿主持久化记录。
+
+```ts
+const techVisual: TechVisualOptions = {
+  enabled: true,
+  preset: 'cyber',
+  model: {
+    opacity: 0.34,
+    tint: '#10243d',
+    brightness: 0.62,
+    saturation: 0.32,
+    edges: {
+      enabled: true,
+      scope: 'connected',
+      color: '#58e6ff',
+      opacity: 0.78,
+      width: 1.2,
+      thresholdAngle: 25,
+    },
+  },
+}
+```
+
+`preset: 'cyber'` 使用更强的深色和青色边缘；`minimal` 使用较弱的暗化和边缘。预设只提供缺省值，显式字段优先。两种预设的默认值如下：
+
+| 字段 | cyber | minimal | 要求 |
+| --- | --- | --- | --- |
+| `enabled` | `false` | `false` | 仅 `true` 开启 |
+| `model.opacity` | `0.34` | `0.48` | 原材质透明度的倍率，0–1 |
+| `model.tint` | `'#10243d'` | `'#26384d'` | `#RRGGBB` |
+| `model.brightness` | `0.62` | `0.78` | 亮度倍率，0–2 |
+| `model.saturation` | `0.32` | `0.58` | 饱和度，0–1 |
+| `model.edges.enabled` | `true` | `true` | 开启构件边缘 |
+| `model.edges.scope` | `'connected'` | `'connected'` | `'connected'` 或 `'all'` |
+| `model.edges.color` | `'#58e6ff'` | `'#7dd3fc'` | `#RRGGBB` |
+| `model.edges.opacity` | `0.78` | `0.45` | 0–1 |
+| `model.edges.width` | `1.2` | `1` | CSS 像素，0.1–20 |
+| `model.edges.thresholdAngle` | `25` | `25` | 相邻面法线夹角阈值，0–180 度；越大保留的棱边越少 |
+
+数值必须有限；非法字段回退到当前预设默认值。`scope: 'connected'` 自动合并所有当前可见且核心线透明度大于 0 的连接线构件及其后代 Mesh；没有连接线时不绘制局部边缘。`all` 绘制整个模型。隐藏或原材质透明度为 0 的构件不绘制边缘。边缘只处理 Mesh 和 SkinnedMesh，Line、Points、InstancedMesh 不参与；蒙皮及形变边缘按生成时的静态形状提取，不承诺动画同步。整个模型边缘可能比较密集，建议从默认的局部范围开始。
+
+模型科技材质与连接线科技风格独立配置；关闭 `techVisual.enabled` 不会删除连接线，关闭后恢复已有材质及外观设置。选中构件优先保持既有选择高亮。纹理仍由原模型持有；不支持科技着色的自定义材质回退为基础深色半透明材质，无法保证其自定义 Shader 效果。模型移动不会自动重新计算固定路线，宿主应重新调用 `setConnectionLine()`。不增加全屏 Bloom，不改变 GIS、背景及 Marker 样式。
 
 <a id="rendering"></a>
 
@@ -380,7 +428,7 @@ const rendering: RenderingOptions = {
 
 GTAO 使用主画面宽高各 50% 的内部目标、低采样和去噪，混合强度为 0.3。仅可见、不透明的模型材质组参与遮蔽；透明、透射、线框、GIS 和辅助对象不作为实心 AO 遮挡。Alpha 裁剪贴图在法线深度采集中保留孔洞。AO 是屏幕空间近似，薄构件、遮挡边缘和画面外几何存在限制，不等同于全局光照。
 
-阴影只由主方向光投射，使用完整模型包围盒适配投影范围及尺度偏移，阴影贴图最高 2048。透明或混合透明材质的网格保守排除投射和接收，避免产生实心阴影；隐藏祖先下的构件仍保持隐藏。大范围模型的阴影细节有限，地下模型没有自动地面接收阴影。阴影与 AO 均不修改模型坐标或相机裁剪规则。
+阴影只由主方向光投射，使用完整模型包围盒适配投影范围及尺度偏移，阴影贴图最高 2048。透明或混合透明材质的网格保守排除投射和接收，避免产生实心阴影；隐藏祖先下的构件仍保持隐藏。科技效果切换、实际投影资格变化及材质失败回退会按需刷新阴影缓存，关闭科技效果后恢复普通模型的投影。大范围模型的阴影细节有限，地下模型没有自动地面接收阴影。阴影与 AO 均不修改模型坐标或相机裁剪规则。
 
 增强继续共用按需渲染，静止时不新增常驻帧循环；开启连接线光点等动画时，每帧仍需绘制模型及后处理，实际开销取决于视口、模型和设备。资源准备或增强绘制抛出错误时回退基础渲染，并在控制台给出一次警告，不新增模型错误事件。关闭再开启增强可重新尝试；WebGL 上下文丢失仍沿用原有中断处理，不承诺自动恢复。
 
@@ -729,32 +777,53 @@ function inspectScene(api) {
 | --- | --- | --- |
 | `id` | `string` | 必填，非空字符串 |
 | `componentIds` | `string[]` | 必填，至少两个非空构件 ID，按顺序连接，不自动排序或闭合 |
-| `color` | `string` | `'#ffb347'`，只支持 `#RRGGBB` |
-| `width` | `number` | `3` CSS 像素，有限且大于 0 |
-| `opacity` | `number` | `1`，有限且在 0–1 范围内；0 同时隐藏线条、箭头和光点 |
 | `visible` | `boolean` | `true`，控制整条线、箭头和光点 |
-| `showArrows` | `boolean` | `true`，每个有效线段中间显示一个方向箭头 |
-| `flow` | `ConnectionFlowOptions` | 可选普通配置对象；默认关闭光点动画 |
+| `visual` | `ConnectionLineVisualOptions` | 唯一视觉配置入口；省略时使用 `classic` 默认值，动画关闭 |
 
-| `ConnectionFlowOptions` 字段 | 类型 | 默认值及要求 |
-| --- | --- | --- |
-| `enabled` | `boolean` | `false`，仅显式 `true` 开启动画 |
-| `duration` | `number` | `3000`，完整路径单圈时长（毫秒），有限且大于 0 |
-| `size` | `number` | `8`，包含柔光边缘的直径（CSS 像素），有限且大于 0 |
-| `color` | `string` | `'#ffffff'`，只支持 `#RRGGBB` |
+`visual.preset: 'cyber'` 将连接线拆成宽幅光晕、彩色核心线、方向箭头和可选流动光点。其余字段均为可选：
 
-`flow` 不接受 `null`、数组、类实例或布尔值。已传字段即使在动画关闭时也完整校验；`duration: 0` 非法，关闭应使用 `enabled: false`。动画周期与相机过渡时长独立。
+```js
+visual: {
+  preset: 'cyber',
+  core: { color: '#d8a7ff', width: 2.4, opacity: 1 },
+  halo: { enabled: true, color: '#7b39ff', width: 10, opacity: 0.42 },
+  arrows: { enabled: true, color: '#f3eaff', size: 9, spacing: 80 },
+  pulse: { enabled: true, color: '#ffffff', size: 12, duration: 3000, speed: 1, trail: 90 },
+}
+```
+
+两种线路预设统一使用 `visual.core`、`visual.halo`、`visual.arrows` 和 `visual.pulse`，省略字段使用所选预设的默认值。模型科技视觉通过 `techVisual` 显式控制，与连接线风格分别配置。
+
+0.5.0 不再接受连接线顶层的 `color`、`width`、`opacity`、`showArrows` 和 `flow`。宿主应将样式移入 `visual.core`，箭头开关移入 `visual.arrows.enabled`，光点配置移入 `visual.pulse`，单圈时长使用 `visual.pulse.duration`。传入任一已删除字段会返回失败及替代字段提示，不会覆盖原线；公开类型不再导出 `ConnectionFlowOptions`。
+
+| 字段 | 默认值及要求 |
+| --- | --- |
+| `preset` | `'classic'`；可选 `'cyber'` |
+| `core.color/width/opacity` | classic 默认 `'#ffb347'`、`3px`、`1`；cyber 默认 `'#d8a7ff'`、`2.4px`、`1`。透明度为 0 时同时隐藏线条、箭头及光点 |
+| `halo.enabled/color/width/opacity` | cyber 默认 `true`、`'#7b39ff'`、`max(core.width × 3, 10)px`、`0.42`；classic 默认关闭、颜色沿用核心线。仅 cyber 绘制柔光，透明度再乘核心线透明度 |
+| `arrows.enabled/color` | 默认开启；cyber 默认 `'#f3eaff'`，classic 默认核心线颜色 |
+| `arrows.size/spacing` | cyber 默认 `9px`、`80px`；按屏幕长度重复箭头，受最小间距和可见数量预算限制；classic 保留每段中点一个 10×8px 箭头，忽略这两个尺寸字段 |
+| `pulse.enabled/color` | 默认 `false`、`'#ffffff'`，仅显式 `enabled: true` 开启动画 |
+| `pulse.size` | cyber 默认 `12px`，classic 默认 `8px`，包含柔光边缘的光点直径 |
+| `pulse.duration` | 默认 `3000ms`，完整路径的基础单圈时长，有限且大于 0 |
+| `pulse.speed` | 默认 `1`；实际周期为 `pulse.duration / pulse.speed`，值越大越快 |
+| `pulse.trail` | cyber 默认 `90px`，classic 默认 `0`；沿折线路径回溯的屏幕尾迹长度，0 关闭尾迹，最多采样 128 个尾迹点 |
+
+所有颜色使用 `#RRGGBB`；尺寸、间距、时长、速度须为有限正数，尾迹为有限非负数，透明度为 0–1。`visual` 及其子配置必须为普通对象。非法配置返回失败并保留旧线。仅 `visual.pulse.enabled: true` 开启动画；cyber 预设本身不开启动画。光晕为线路局部柔光 Shader，cyber 核心线外还包含暗色轮廓及细高亮，不影响全屏曝光。
+
+`visual`、`core`、`halo`、`arrows`、`pulse` 不接受 `null`、数组、类实例或布尔值。已传字段即使在对应效果关闭时也完整校验；`pulse.duration: 0` 非法，关闭动画应使用 `pulse.enabled: false`。实际周期也必须为有限正数，与相机过渡时长独立。
 
 ```js
 const result = viewer.value.setConnectionLine({
   id: 'inspection-route',
   componentIds: ['component-a', 'component-b', 'component-c'],
-  color: '#ffb347',
-  width: 3,
-  opacity: 1,
   visible: true,
-  showArrows: true,
-  flow: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+  visual: {
+    preset: 'classic',
+    core: { color: '#ffb347', width: 3, opacity: 1 },
+    arrows: { enabled: true },
+    pulse: { enabled: true, duration: 3000, size: 8, color: '#ffffff' },
+  },
 })
 // { success: boolean, error?: string, unknownIds: string[], invalidAnchorIds: string[] }
 if (!result.success) console.warn(result)
@@ -767,13 +836,13 @@ viewer.value.clearConnectionLines()
 
 连续重合点跳过零长度段，非连续重复点保留，例如 A→B→A。全部点重合、非法配置、未知 ID 或无效锚点会拒绝整次更新，保留原线，并返回原因；未知 ID 和无效锚点分别列在 `unknownIds` 和 `invalidAnchorIds` 中。方法不自动跳过错误节点或回退锚点。
 
-箭头位于每段空间中点，指向下一个构件，尺寸固定为长 10、宽 8 CSS 像素。相机变化时按当前投影更新方向；投影段长不足 24px、任一端点位于近裁剪面之前或方向无法辨认时不显示该段箭头。线宽和箭头尺寸不随设备像素比或模型单位改变。
+`classic` 箭头位于每段空间中点，指向下一个构件，尺寸固定为长 10、宽 8 CSS 像素；投影段长不足 24px、任一端点位于近裁剪面之前或方向无法辨认时不显示该段箭头。`cyber` 箭头按投影长度重复排列，尺寸及间距由 `visual.arrows.size/spacing` 控制。两种风格均随相机投影更新方向，线宽和箭头尺寸不随设备像素比或模型单位改变。
 
-每条路径一个光点，按构件数组顺序沿空间折线匀速移动，各段用时与空间长度成比例，拐点不停顿、不缓动。到达终点后直接跳回起点，不生成首尾连接段；非连续重复点仍按路径经过。省略 `flow` 或 `enabled` 时保持静态线条，不创建光点。
+每条路径一个光点，按构件数组顺序沿空间折线匀速移动，各段用时与空间长度成比例，拐点不停顿、不缓动。到达终点后直接跳回起点，不生成首尾连接段；非连续重复点仍按路径经过。省略 `visual.pulse.enabled` 时保持静态线条，不创建光点。
 
-成功替换同 ID 的线条后光点进度从起点重置，失败保留旧线、光点及播放进度。旋转、缩放、定位、Home、视角恢复不重置进度。光点继承线条的 `visible`、`opacity`，独立于 `showArrows` 和箭头的 24px 隐藏阈值。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停计时和光点续帧，恢复后从暂停位置继续；减少动态效果下保留静态光点，新建光点停在起点。设置变化会动态响应，暂停期间的时间不计入下一帧。
+成功替换同 ID 的线条后光点进度从起点重置，失败保留旧线、光点及播放进度。旋转、缩放、定位、Home、视角恢复不重置进度。光点继承线条的 `visible`、`visual.core.opacity`，独立于 `visual.arrows.enabled` 和箭头的隐藏规则。页面隐藏、容器零尺寸或系统开启减少动态效果时暂停计时和光点续帧，恢复后从暂停位置继续；减少动态效果下保留静态光点，新建光点停在起点。设置变化会动态响应，暂停期间的时间不计入下一帧。
 
-线条和箭头覆盖模型及选中轮廓，光点绘制在它们上方，DOM Marker 和弹窗继续位于其上。光点固定 CSS 像素大小，相机裁剪及视口边界正常生效；SDK 合并连接线远裁剪需求，覆盖模型范围外的空节点原点，不改变近裁剪面和控制器距离限制。连接线不参与模型索引、拾取、选择、Home 范围和用户缩小上限。构件隐藏、半透明或选中不改变线条；需要单独通过线的 `visible` 或 `opacity` 控制。
+线条和箭头覆盖模型及选中轮廓，光点绘制在它们上方，DOM Marker 和弹窗继续位于其上。光点固定 CSS 像素大小，相机裁剪及视口边界正常生效；SDK 合并连接线远裁剪需求，覆盖模型范围外的空节点原点，不改变近裁剪面和控制器距离限制。连接线不参与模型索引、拾取、选择、Home 范围和用户缩小上限。构件隐藏、半透明或选中不改变线条；需要单独通过线的 `visible` 或 `visual.core.opacity` 控制。
 
 成功替换模型会在通知宿主前清空旧线及光点，失败重载保留当前线条和动画。宿主保存模型身份、revision 和配置，新模型就绪后自行重新提交。启用有效光点动画时 Viewer 共享帧持续渲染；关闭、隐藏或删除最后一条有效动画后停止光点续帧，相机与 GIS 自身所需帧保留。上下文丢失后停止渲染及操作，不自动恢复。仅支持实线、静态箭头及循环光点，不提供寻路、曲线、标签、模型动画播放、点击、编辑、自动持久化或模型变换跟踪；内部模块不作为运行时包导出。
 
@@ -1539,6 +1608,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `ZoomOptions`             | 继承相机过渡选项，增加 `factor?`，默认 `1.2`；未配置时缩放时长 `300ms` | [视角缩放](#viewer-api) |
 | `BackgroundOptions`       | 场景背景 `color?`、`imageUrl?`，默认纯色、图片居中 cover               | [背景](#props)             |
 | `RenderingOptions`        | 可选渲染增强 `enabled?`、`ambientOcclusion?`、`shadows?`、`exposure?` | [渲染增强](#rendering) |
+| `TechVisualOptions`       | 模型科技材质、路线边缘线和预设配置                         | [科技视觉](#tech-visual) |
 | `Appearance`              | 有效显隐、完整分支半透明汇总、颜色覆盖                                         | [外观](#appearance)        |
 | `AppearancePatch`         | 可选外观字段，允许 `null` 取消覆盖                                     | [外观](#appearance)        |
 | `AppearanceState`         | `own`、`effective`、`initial`                                          | [外观](#appearance)        |
@@ -1562,7 +1632,7 @@ SDK 的天地图 `elv_c` 适配器支持 zlib 压缩的 150×150 小端 UInt16 �
 | `NavigationOptions`       | `home?`、`cube?`、`componentTree?`，均默认 true                        | [导航](#navigation)        |
 | `ViewDirection`           | 六个标准观察方向                                                       | [导航](#navigation)        |
 | `ConnectionLineOptions` | 构件连接线的有序 ID 与线条、箭头及光点配置 | [连接线](#connection-lines) |
-| `ConnectionFlowOptions` | 可选循环光点的开关、单圈时长、CSS 像素直径及颜色 | [连接线](#connection-lines) |
+| `ConnectionLineVisualOptions` | 经典或 cyber 线路组合、光晕、箭头和流光配置 | [连接线](#connection-lines) |
 | `ConnectionLineResult` | 创建/替换结果、未知构件及无效锚点列表 | [连接线](#connection-lines) |
 | `ViewerApi`               | 组件 ref 暴露的 26 个方法                                              | [实例方法](#viewer-api)    |
 | `GeographicCoordinate`    | `longitude`、`latitude`、`height?`                                     | [GIS](#gis)                |

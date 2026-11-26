@@ -134,6 +134,17 @@ export function createViewer(
       camera.updateProjectionMatrix()
     }
   }
+  function syncTechConnections() {
+    const meshes = []
+    const ids = connections.getConnectedComponentIds()
+    for (const id of ids) {
+      const object = components?.renderObjects.get(id)
+      object?.traverse((node) => {
+        if (node.isMesh) meshes.push(node)
+      })
+    }
+    rendering.setConnectedMeshes(meshes)
+  }
   function invalidate() {
     // 相机阻尼、外观和标签共享同一帧调度；静止时不维持常驻渲染循环。
     if (!frame && !destroyed && contextAvailable) frame = requestAnimationFrame(render)
@@ -297,6 +308,10 @@ export function createViewer(
     setRendering(options) {
       rendering.set(options)
     },
+    setTechVisual(options) {
+      rendering.setTechVisual(options)
+      syncTechConnections()
+    },
     setBackground(options) {
       background.set(options)
     },
@@ -312,6 +327,7 @@ export function createViewer(
       current = model
       components = index
       appearance = state
+      syncTechConnections()
       initialView = view
       viewWarning = undefined
       lastOrientation = undefined
@@ -408,16 +424,23 @@ export function createViewer(
       if (!current || destroyed || !contextAvailable)
         return connectionLineFailure('模型未就绪、上下文不可用或查看器已销毁')
       const result = connections.setLine(value)
-      if (result.success) invalidate()
+      if (result.success) {
+        syncTechConnections()
+        invalidate()
+      }
       return result
     },
     removeConnectionLine(id) {
       const removed = connections.remove(id)
-      if (removed) invalidate()
+      if (removed) {
+        syncTechConnections()
+        invalidate()
+      }
       return removed
     },
     clearConnectionLines() {
       connections.clear()
+      syncTechConnections()
       if (!destroyed) invalidate()
     },
     setMarkers(values) {
